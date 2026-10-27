@@ -90,6 +90,9 @@ The read-only tools, and the ones that write:
 | `delete_workout` | *Writes.* Removes a session from history on every device, as History's Delete does. |
 | `add_bodyweight` / `delete_bodyweight` | *Writes.* A weigh-in for today or an earlier day (one per day, as the weigh-in sheet keeps them), or one taken out. |
 | `set_goal_weight` / `set_weekly_rate_goal` | *Writes.* The target weight on the charts, and the weekly-trend range ("lose 0.5 to 1 % a week"). |
+| `assign_weekday` | *Writes.* Which routines a weekday holds every week: one, several trained together, or rest. |
+| `override_day` | *Writes.* One date changed from the weekly plan: another routine, rest, or back to the plan. |
+| `set_day_note` | *Writes.* Why a day had no training (sick, travel, rest, injured, or a text); the missed-workout reminder skips it. |
 
 `get_routine` and `preview_session` answer two different questions, and confusing them is the
 easiest way for a coach to give wrong advice. `get_routine` reports what the routine *stores*.
