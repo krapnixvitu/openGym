@@ -67,7 +67,7 @@ the server's stderr.
 
 ## Tools
 
-Nine read-only tools, and one that writes:
+The read-only tools, and the ones that write:
 
 | Tool | What it answers |
 |---|---|
@@ -81,6 +81,8 @@ Nine read-only tools, and one that writes:
 | `estimate_1rm` | All-time best 1RM for an exercise + the trend, or a PR table across all exercises. |
 | `muscle_balance` | Which muscles I've trained this week/month/all-time, ranked + which I've neglected. |
 | `log_workout` | *Writes.* "I did dumbbell curls, 12 kg, 12/12/10" → a logged session in your history, on every device. Needs pairing: [Logging workouts](#logging-workouts). |
+| `get_settings` | My training settings (rest timer, effort scale, week start, how sessions are planned and laid out) and what each means. |
+| `update_settings` | *Writes.* Those settings changed. Not the unit (switching converts every weight), reminders or sign-in: those stay in the app. |
 
 `get_routine` and `preview_session` answer two different questions, and confusing them is the
 easiest way for a coach to give wrong advice. `get_routine` reports what the routine *stores*.
