@@ -148,7 +148,7 @@ Stdio MCP bridge (`@modelcontextprotocol/sdk`) that reads one user's data straig
 `frontend/src/lib/log-workout.js` and saves it through `changeProfile`, the read, `PUT /api/data`
 and 409-retry loop every write tool shares, over a paired-session token
 (`api-client.js`, `scripts/pair.mjs`), the way a device syncs. Each further group of write tools
-has its own file (`routine-tools.js`, ...) on the same `changeProfile`. See `mcp/README.md`.
+has its own file (`routine-tools.js`, `progression-tools.js`, ...) on the same `changeProfile`. See `mcp/README.md`.
 
 ### Passkeys and self-hosting constraints
 
