@@ -93,6 +93,11 @@ The read-only tools, and the ones that write:
 | `assign_weekday` | *Writes.* Which routines a weekday holds every week: one, several trained together, or rest. |
 | `override_day` | *Writes.* One date changed from the weekly plan: another routine, rest, or back to the plan. |
 | `set_day_note` | *Writes.* Why a day had no training (sick, travel, rest, injured, or a text); the missed-workout reminder skips it. |
+| `create_routine` | *Writes.* A new routine: its exercises in order, with sets, reps or seconds, weight, rest, warm-ups and supersets. |
+| `edit_routine` | *Writes.* A routine changed as the routine editor changes it: add, update, remove, replace, move, superset; its name and progression rule. |
+| `delete_routine` | *Writes.* A routine deleted, and taken off the weekdays and rescheduled dates that name it. Logged workouts stay. |
+| `duplicate_routine` | *Writes.* A copy of a routine, right after it. |
+| `restore_routine` | *Writes.* Undoes the last change these tools made to a routine (an edit or a delete) since the server started. |
 
 `get_routine` and `preview_session` answer two different questions, and confusing them is the
 easiest way for a coach to give wrong advice. `get_routine` reports what the routine *stores*.
