@@ -272,6 +272,7 @@ export const editRoutine = {
     'Change a routine, as the routine editor does: rename it, set its progression rule, and a list of changes made in order, each against the routine as the one before left it.',
     'add (an exercise, at a position), update (a slot\'s sets, reps, weight, rest, warm-ups, rep range, pyramid, note, progression), remove, replace (another exercise in the slot, keeping its sets, reps and rest), move (to another position), superset (a slot with the one after it), unsuperset.',
     'Slots are positions from get_routine, 1-based. Logged workouts are never changed. Call with dry_run: true first and show the user the result.',
+    'A weight set here is where a new exercise starts, and where an exercise opens when its sets or reps change too; otherwise the progression rule and the last session decide. preview_session shows what the next session opens at.',
   ].join(' '),
   schema: {
     routine_id: z.string().min(1),
