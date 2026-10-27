@@ -7,6 +7,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { TOOLS } from './tools.js'
 import { WRITE_TOOLS } from './write-tools.js'
+import { SCHEDULE_TOOLS } from './schedule-tools.js'
 import { init, getUser } from './state.js'
 
 const server = new McpServer({
@@ -27,7 +28,7 @@ try {
   // env and restarting.
 }
 
-for (const t of [...TOOLS, ...WRITE_TOOLS]) {
+for (const t of [...TOOLS, ...WRITE_TOOLS, ...SCHEDULE_TOOLS]) {
   server.tool(
     t.name,
     t.description,
