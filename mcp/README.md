@@ -114,6 +114,10 @@ The read-only tools, and the ones that write:
 | `set_alias` | *Writes.* Other names an exercise goes by, which search then finds. |
 | `favourite_exercise` | *Writes.* An exercise starred or not. |
 | `set_bar_weight` | *Writes.* The bar a barbell exercise is loaded on: lighter, none, or the bar type's. |
+| `get_measurements` | My body measurement check-ins, in the units the app shows, or one field's history. |
+| `add_measurements` | *Writes.* A day's measurements (circumferences, body fat, my own fields), added to that day's check-in. |
+| `delete_measurements` | *Writes.* A day's check-in deleted. |
+| `add_measurement_field` | *Writes.* A measurement of my own to track, in cm, in, %, kg, lb or no unit. |
 
 `get_routine` and `preview_session` answer two different questions, and confusing them is the
 easiest way for a coach to give wrong advice. `get_routine` reports what the routine *stores*.
