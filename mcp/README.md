@@ -67,7 +67,7 @@ the server's stderr.
 
 ## Tools
 
-Nine read-only tools, and one that writes:
+The read-only tools, and the ones that write:
 
 | Tool | What it answers |
 |---|---|
@@ -81,6 +81,11 @@ Nine read-only tools, and one that writes:
 | `estimate_1rm` | All-time best 1RM for an exercise + the trend, or a PR table across all exercises. |
 | `muscle_balance` | Which muscles I've trained this week/month/all-time, ranked + which I've neglected. |
 | `log_workout` | *Writes.* "I did dumbbell curls, 12 kg, 12/12/10" → a logged session in your history, on every device. Needs pairing: [Logging workouts](#logging-workouts). |
+| `create_routine` | *Writes.* A new routine: its exercises in order, with sets, reps or seconds, weight, rest, warm-ups and supersets. |
+| `edit_routine` | *Writes.* A routine changed as the routine editor changes it: add, update, remove, replace, move, superset; its name and progression rule. |
+| `delete_routine` | *Writes.* A routine deleted, and taken off the weekdays and rescheduled dates that name it. Logged workouts stay. |
+| `duplicate_routine` | *Writes.* A copy of a routine, right after it. |
+| `restore_routine` | *Writes.* Undoes the last change these tools made to a routine (an edit or a delete) since the server started. |
 
 `get_routine` and `preview_session` answer two different questions, and confusing them is the
 easiest way for a coach to give wrong advice. `get_routine` reports what the routine *stores*.
