@@ -291,6 +291,19 @@ describe('configuration', () => {
     expect(() => apiBase('not a url')).toThrow(/not a URL/)
     expect(() => apiConfig({ OPENGYM_URL: 'http://gym.lan', OPENGYM_TOKEN: 'x' })).toThrow(/https/)
   })
+
+  test('OPENGYM_PRIVATE_HTTP=1 allows http to a container name, and to nothing a network routes', () => {
+    const env = { OPENGYM_PRIVATE_HTTP: '1' }
+    expect(apiBase('http://opengym-api:3000', env)).toBe('http://opengym-api:3000')
+    expect(apiConfig({ ...env, OPENGYM_URL: 'http://opengym_api_1:3000', OPENGYM_TOKEN: 'x' }).base).toBe('http://opengym_api_1:3000')
+    expect(() => apiBase('http://gym.lan:8080', env)).toThrow(/https/)
+    expect(() => apiBase('http://192.168.1.5', env)).toThrow(/https/)
+    expect(() => apiBase('http://10.0.0.2:3000', env)).toThrow(/https/)
+    expect(() => apiBase('http://gym.example.com', env)).toThrow(/https/)
+    // Without the switch a container name is refused like any other http host.
+    expect(() => apiBase('http://opengym-api:3000', {})).toThrow(/OPENGYM_PRIVATE_HTTP/)
+    expect(() => apiBase('http://opengym-api:3000', { OPENGYM_PRIVATE_HTTP: 'yes' })).toThrow(/https/)
+  })
 })
 
 // Last: seeding gives state.js a profile of its own for the rest of this file.
