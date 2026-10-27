@@ -16,6 +16,7 @@ import { ROUTINE_TOOLS } from './routine-tools.js'
 import { PROGRESSION_TOOLS } from './progression-tools.js'
 import { ROTATION_TOOLS } from './rotation-tools.js'
 import { EQUIPMENT_TOOLS } from './equipment-tools.js'
+import { EXERCISE_TOOLS } from './exercise-tools.js'
 
 const server = new McpServer({
   name: 'opengym',
@@ -37,7 +38,7 @@ try {
 }
 
 const READS = new Set(TOOLS)
-for (const t of [...TOOLS, ...WRITE_TOOLS, ...BODY_TOOLS, ...SCHEDULE_TOOLS, ...ROUTINE_TOOLS, ...PROGRESSION_TOOLS, ...ROTATION_TOOLS, ...EQUIPMENT_TOOLS]) {
+for (const t of [...TOOLS, ...WRITE_TOOLS, ...BODY_TOOLS, ...SCHEDULE_TOOLS, ...ROUTINE_TOOLS, ...PROGRESSION_TOOLS, ...ROTATION_TOOLS, ...EQUIPMENT_TOOLS, ...EXERCISE_TOOLS]) {
   server.tool(
     t.name,
     t.description,

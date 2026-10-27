@@ -151,7 +151,7 @@ copy with the app's own helpers (`lib/log-workout.js`, `lib/session-edit.js`,
 (`write-tools.js`), the read, `PUT /api/data` and 409-retry loop they share, over a
 paired-session token (`api-client.js`, `scripts/pair.mjs`), the way a device syncs.
 `write-tools.js` holds `log_workout` and the corrections to a logged workout; each further group
-has its own file (`body-tools.js`, `equipment-tools.js`, `schedule-tools.js`, `rotation-tools.js`, `routine-tools.js`, `progression-tools.js`, ...). See `mcp/README.md`.
+has its own file (`body-tools.js`, `equipment-tools.js`, `exercise-tools.js`, `schedule-tools.js`, `rotation-tools.js`, `routine-tools.js`, `progression-tools.js`, ...). See `mcp/README.md`.
 
 ### Passkeys and self-hosting constraints
 

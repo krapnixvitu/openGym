@@ -105,6 +105,15 @@ The read-only tools, and the ones that write:
 | `save_equipment_profile` | *Writes.* A new equipment profile, or one changed: its name and what that place has. |
 | `delete_equipment_profile` | *Writes.* An equipment profile deleted. |
 | `set_active_equipment` | *Writes.* "Only dumbbells at home today": the profile in use, so the app shows only what it has; or the filter off. |
+| `search_exercises` | Find an exercise and its id in the library and my own, typos and abbreviations included, favourites first. |
+| `similar_exercises` | What else trains the same muscle when the machine is taken, optionally only what my equipment allows. |
+| `create_custom_exercise` | *Writes.* An exercise of my own: name, body part, equipment, muscles, description, other names. |
+| `edit_custom_exercise` | *Writes.* One of my own exercises changed. |
+| `delete_custom_exercise` | *Writes.* One of my own exercises deleted; it leaves my routines, logged workouts keep its sets. |
+| `set_exercise_note` | *Writes.* A standing note shown every time the exercise comes up ("seat 4, pin 7"). |
+| `set_alias` | *Writes.* Other names an exercise goes by, which search then finds. |
+| `favourite_exercise` | *Writes.* An exercise starred or not. |
+| `set_bar_weight` | *Writes.* The bar a barbell exercise is loaded on: lighter, none, or the bar type's. |
 
 `get_routine` and `preview_session` answer two different questions, and confusing them is the
 easiest way for a coach to give wrong advice. `get_routine` reports what the routine *stores*.
