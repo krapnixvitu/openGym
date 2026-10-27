@@ -232,6 +232,42 @@ set, the read tools read the folder as before.
   1RM, PRs and the muscle map, and like any freestyle session it can inform a routine that has
   no history of its own, but it does not tick off a planned day or a coach week's session.
 
+## Running it as a container
+
+On a server where Claude Code runs under its own account, without Docker access, the MCP can run
+as a container next to the app and be reached through a Unix socket. `src/socket.js` listens on
+`MCP_SOCKET` and starts one stdio server per connection, which ends when the connection closes.
+The socket is made with umask 077, so only the uid the container runs as can open it: run one
+container per person, as the uid of that person's Claude account.
+
+```bash
+docker build -f mcp/Dockerfile -t opengym-mcp .     # from the repository root
+```
+
+```yaml
+# beside api and web in docker-compose.yml; one service per person
+  mcp-matt:
+    image: opengym-mcp
+    restart: unless-stopped
+    user: "1001:1001"                  # the uid:gid of Matt's Claude account
+    environment:
+      OPENGYM_URL: http://api:3000
+      OPENGYM_PRIVATE_HTTP: "1"        # plain http, to a container name only
+      OPENGYM_TOKEN: ${MATT_MCP_TOKEN} # from scripts/pair.mjs
+      TZ: Europe/Zurich                # "today" and logged dates are local dates
+    volumes:
+      - /srv/mcp/matt:/run/mcp         # a folder that uid owns, mode 700
+```
+
+Claude Code then starts it as a stdio command:
+
+```bash
+claude mcp add opengym -- socat STDIO UNIX-CONNECT:/srv/mcp/matt/mcp.sock
+```
+
+Each connection is its own process, so `restore_routine` can undo only changes made in the same
+Claude session. The server's log (stderr) stays the container's log: `docker logs mcp-matt`.
+
 ## How it reuses the training logic
 
 The MCP server imports the training helpers under `frontend/src/lib/` directly as Node ESM
