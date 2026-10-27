@@ -67,7 +67,7 @@ the server's stderr.
 
 ## Tools
 
-Nine read-only tools, and one that writes:
+Nine read-only tools, and five that write:
 
 | Tool | What it answers |
 |---|---|
@@ -81,6 +81,8 @@ Nine read-only tools, and one that writes:
 | `estimate_1rm` | All-time best 1RM for an exercise + the trend, or a PR table across all exercises. |
 | `muscle_balance` | Which muscles I've trained this week/month/all-time, ranked + which I've neglected. |
 | `log_workout` | *Writes.* "I did dumbbell curls, 12 kg, 12/12/10" → a logged session in your history, on every device. Needs pairing: [Logging workouts](#logging-workouts). |
+| `add_bodyweight` / `delete_bodyweight` | *Writes.* A weigh-in for today or an earlier day (one per day, as the weigh-in sheet keeps them), or one taken out. |
+| `set_goal_weight` / `set_weekly_rate_goal` | *Writes.* The target weight on the charts, and the weekly-trend range ("lose 0.5 to 1 % a week"). |
 
 `get_routine` and `preview_session` answer two different questions, and confusing them is the
 easiest way for a coach to give wrong advice. `get_routine` reports what the routine *stores*.
