@@ -9,11 +9,12 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { TOOLS } from './tools.js'
 import { WRITE_TOOLS } from './write-tools.js'
 import { init, getUser, apiMode, refresh } from './state.js'
+import { INSTRUCTIONS } from './instructions.js'
 
 const server = new McpServer({
   name: 'opengym',
   version: '0.1.0'
-})
+}, { instructions: INSTRUCTIONS })
 
 // Fail fast on bad config so a misnamed OPENGYM_DATA doesn't silently answer every call with
 // the no-state sentinel. Always register every tool so the LLM sees the full list at
