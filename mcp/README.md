@@ -84,6 +84,8 @@ The read-only tools, and the ones that write:
 | `assign_weekday` | *Writes.* Which routines a weekday holds every week: one, several trained together, or rest. |
 | `override_day` | *Writes.* One date changed from the weekly plan: another routine, rest, or back to the plan. |
 | `set_day_note` | *Writes.* Why a day had no training (sick, travel, rest, injured, or a text); the missed-workout reminder skips it. |
+| `set_rotation` | *Writes.* Train in a loop of routines instead of on weekdays (rest days and repeats allowed), start it over, or go back to the weekday plan. |
+| `plan_week` | *Writes.* A coaching week as a queue: sessions in order, done on whatever days you train; `[]` clears it. |
 
 `get_routine` and `preview_session` answer two different questions, and confusing them is the
 easiest way for a coach to give wrong advice. `get_routine` reports what the routine *stores*.
