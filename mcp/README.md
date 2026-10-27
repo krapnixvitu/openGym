@@ -67,7 +67,7 @@ the server's stderr.
 
 ## Tools
 
-Nine read-only tools, and one that writes:
+The read-only tools, and the ones that write:
 
 | Tool | What it answers |
 |---|---|
@@ -81,6 +81,10 @@ Nine read-only tools, and one that writes:
 | `estimate_1rm` | All-time best 1RM for an exercise + the trend, or a PR table across all exercises. |
 | `muscle_balance` | Which muscles I've trained this week/month/all-time, ranked + which I've neglected. |
 | `log_workout` | *Writes.* "I did dumbbell curls, 12 kg, 12/12/10" → a logged session in your history, on every device. Needs pairing: [Logging workouts](#logging-workouts). |
+| `list_equipment_profiles` | Which equipment profiles I have ("Home", "Gym"), what each holds, and which is in use. |
+| `save_equipment_profile` | *Writes.* A new equipment profile, or one changed: its name and what that place has. |
+| `delete_equipment_profile` | *Writes.* An equipment profile deleted. |
+| `set_active_equipment` | *Writes.* "Only dumbbells at home today": the profile in use, so the app shows only what it has; or the filter off. |
 
 `get_routine` and `preview_session` answer two different questions, and confusing them is the
 easiest way for a coach to give wrong advice. `get_routine` reports what the routine *stores*.
