@@ -2,7 +2,7 @@
 // workout is filed with log_workout first, so what is corrected is a record the app would hold.
 import { describe, test, expect, beforeEach, afterEach } from 'vitest'
 import http from 'node:http'
-import { logWorkout, updateWorkout, deleteWorkout, swapExercise, _resetWriteWindow } from '../src/write-tools.js'
+import { logWorkout, updateWorkout, deleteWorkout, swapExercise, addToWorkout, moveWorkoutTool, excludeFromProgression, _resetWriteWindow } from '../src/write-tools.js'
 
 const TOKEN = 'tok.secret-value'
 
@@ -180,6 +180,98 @@ describe('swap_exercise', () => {
     const puts = api.puts.length
     const out = await swapExercise.handler({ workout_id: id, exercise: 1, to: 'dumbbell hammer curl', dry_run: true }, { env: api.env })
     expect(out).toMatchObject({ swapped: false, dry_run: true })
+    expect(api.puts.length).toBe(puts)
+  })
+})
+
+describe('add_to_workout', () => {
+  test('a forgotten set goes onto the exercise, and a forgotten exercise onto the workout', async () => {
+    const id = await withLogged()
+    const out = await addToWorkout.handler({ workout_id: id, add: [
+      { exercise: 1, sets: [{ reps: 8, weight: 12 }] },
+      { name: '0313', sets: [{ reps: 10, weight: 10 }, { reps: 10, weight: 10 }] },
+    ] }, { env: api.env })
+    expect(out.updated).toBe(true)
+    const w = stored(id)
+    expect(w.entries[0].sets.map(r => r.r)).toEqual([12, 12, 10, 8])
+    expect(w.entries[1]).toMatchObject({ id: '0313', sets: [{ w: 10, r: 10, done: true }, { w: 10, r: 10, done: true }] })
+    expect(w.vol).toBe(12 * 12 * 2 + 12 * 10 + 12 * 8 + 10 * 10 * 2)
+  })
+
+  test('weights in the other unit are converted, as log_workout converts them', async () => {
+    const id = await withLogged()
+    await addToWorkout.handler({ workout_id: id, unit: 'lb', add: [{ exercise: 1, sets: [{ reps: 5, weight: 22 }] }] }, { env: api.env })
+    expect(stored(id).entries[0].sets[3].w).toBe(10)
+  })
+
+  test('an ambiguous name comes back as a problem with candidates, nothing saved', async () => {
+    const id = await withLogged()
+    const puts = api.puts.length
+    const out = await addToWorkout.handler({ workout_id: id, add: [{ name: 'hammer curl', sets: [{ reps: 10 }] }] }, { env: api.env })
+    expect(out.updated).toBe(false)
+    expect(JSON.stringify(out.problems)).toContain('candidates')
+    expect(api.puts.length).toBe(puts)
+  })
+
+  test('exercise and name together are refused', async () => {
+    const id = await withLogged()
+    const out = await addToWorkout.handler({ workout_id: id, add: [{ exercise: 1, name: '0313', sets: [{ reps: 10 }] }] }, { env: api.env })
+    expect(out.problem).toMatch(/not both/)
+  })
+})
+
+describe('move_workout', () => {
+  test('to another day, keeping its length, filed in date order', async () => {
+    const id = await withLogged()
+    await logWorkout.handler({ ...CURLS, date: '2026-10-21' }, { env: api.env })
+    const before = stored(id)
+    const out = await moveWorkout.handler({ workout_id: id, date: '2026-10-22', start: '07:30' }, { env: api.env })
+    expect(out).toMatchObject({ moved: true, date: '2026-10-22', start: '07:30' })
+    const after = stored(id)
+    expect(after.end - after.start).toBe(before.end - before.start)
+    expect(api.doc.workouts.map(w => w.d)).toEqual(['2026-10-21', '2026-10-22'])
+  })
+
+  test('a new duration moves the end, not the start', async () => {
+    const id = await withLogged()
+    const start = stored(id).start
+    await moveWorkout.handler({ workout_id: id, duration_min: 75 }, { env: api.env })
+    expect(stored(id)).toMatchObject({ start, end: start + 75 * 60000 })
+  })
+
+  test('a day in the future is refused', async () => {
+    const id = await withLogged()
+    const out = await moveWorkout.handler({ workout_id: id, date: '2999-01-01' }, { env: api.env })
+    expect(out.moved).toBe(false)
+    expect(stored(id).d).toBe('2026-10-20')
+  })
+})
+const moveWorkout = moveWorkoutTool
+
+describe('exclude_from_progression', () => {
+  test('the whole session, and back', async () => {
+    const id = await withLogged()
+    await excludeFromProgression.handler({ workout_id: id, exclude: true }, { env: api.env })
+    expect(stored(id).excludeFromProgression).toBe(true)
+    expect(stored(id).entries[0].noProg).toBe(true)
+    await excludeFromProgression.handler({ workout_id: id, exclude: false }, { env: api.env })
+    expect(stored(id).excludeFromProgression).toBeUndefined()
+    expect(stored(id).entries[0].noProg).toBeUndefined()
+  })
+
+  test('one entry only', async () => {
+    const id = await withLogged()
+    await addToWorkout.handler({ workout_id: id, add: [{ name: '0313', sets: [{ reps: 10, weight: 10 }] }] }, { env: api.env })
+    const out = await excludeFromProgression.handler({ workout_id: id, exclude: true, exercise: 2 }, { env: api.env })
+    expect(out.entries.map(e => e.counts_for_progression)).toEqual([true, false])
+    expect(stored(id).excludeFromProgression).toBeUndefined()
+  })
+
+  test('asking for what already is saves nothing', async () => {
+    const id = await withLogged()
+    const puts = api.puts.length
+    const out = await excludeFromProgression.handler({ workout_id: id, exclude: false }, { env: api.env })
+    expect(out.updated).toBe(false)
     expect(api.puts.length).toBe(puts)
   })
 })
