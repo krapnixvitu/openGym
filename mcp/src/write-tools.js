@@ -18,7 +18,7 @@ import { modeOf } from '../../frontend/src/lib/history.js'
 import { moveWorkout, setWorkoutDuration, startTimeOf, durationMinOf, endsInFuture, MAX_DURATION_MIN } from '../../frontend/src/lib/workout-date.js'
 import { setSessionNoProg, setEntryNoProg } from '../../frontend/src/lib/session-noprog.js'
 
-const localIso = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0')
+export const localIso = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0')
 const hhmm = t => { const d = new Date(t); return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0') }
 // Two writers racing the same profile resolve in a round or two; past that something keeps
 // writing, and the user is better told than retried at.
@@ -30,7 +30,7 @@ const WINDOW_MS = 60 * 60000
 let saves = []
 export const _resetWriteWindow = () => { saves = [] }
 
-function fail(code, message) {
+export function fail(code, message) {
   const err = new Error(message)
   err.code = code
   return err

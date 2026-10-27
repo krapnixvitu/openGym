@@ -68,7 +68,7 @@ the server's stderr.
 
 ## Tools
 
-Nine read-only tools, and seven that write:
+The read-only tools, and the ones that write:
 
 | Tool | What it answers |
 |---|---|
@@ -88,6 +88,8 @@ Nine read-only tools, and seven that write:
 | `move_workout` | *Writes.* A logged workout's date, start time or duration; it keeps its length when moved, and badges follow the new order. |
 | `exclude_from_progression` | *Writes.* Keeps a logged session (or one exercise in it) out of progression, or counts it again: the injury day, the deload. |
 | `delete_workout` | *Writes.* Removes a session from history on every device, as History's Delete does. |
+| `add_bodyweight` / `delete_bodyweight` | *Writes.* A weigh-in for today or an earlier day (one per day, as the weigh-in sheet keeps them), or one taken out. |
+| `set_goal_weight` / `set_weekly_rate_goal` | *Writes.* The target weight on the charts, and the weekly-trend range ("lose 0.5 to 1 % a week"). |
 
 `get_routine` and `preview_session` answer two different questions, and confusing them is the
 easiest way for a coach to give wrong advice. `get_routine` reports what the routine *stores*.

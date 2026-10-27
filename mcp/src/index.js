@@ -10,6 +10,7 @@ import { TOOLS } from './tools.js'
 import { WRITE_TOOLS } from './write-tools.js'
 import { init, getUser, apiMode, refresh } from './state.js'
 import { INSTRUCTIONS } from './instructions.js'
+import { BODY_TOOLS } from './body-tools.js'
 
 const server = new McpServer({
   name: 'opengym',
@@ -31,7 +32,7 @@ try {
 }
 
 const READS = new Set(TOOLS)
-for (const t of [...TOOLS, ...WRITE_TOOLS]) {
+for (const t of [...TOOLS, ...WRITE_TOOLS, ...BODY_TOOLS]) {
   server.tool(
     t.name,
     t.description,
