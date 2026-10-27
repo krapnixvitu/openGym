@@ -101,6 +101,10 @@ The read-only tools, and the ones that write:
 | `set_progression` | *Writes.* How weights and reps move: a routine's rule, or one exercise's own rule, weight step and deload factor, in one routine or all of them. |
 | `set_rotation` | *Writes.* Train in a loop of routines instead of on weekdays (rest days and repeats allowed), start it over, or go back to the weekday plan. |
 | `plan_week` | *Writes.* A coaching week as a queue: sessions in order, done on whatever days you train; `[]` clears it. |
+| `list_equipment_profiles` | Which equipment profiles I have ("Home", "Gym"), what each holds, and which is in use. |
+| `save_equipment_profile` | *Writes.* A new equipment profile, or one changed: its name and what that place has. |
+| `delete_equipment_profile` | *Writes.* An equipment profile deleted. |
+| `set_active_equipment` | *Writes.* "Only dumbbells at home today": the profile in use, so the app shows only what it has; or the filter off. |
 
 `get_routine` and `preview_session` answer two different questions, and confusing them is the
 easiest way for a coach to give wrong advice. `get_routine` reports what the routine *stores*.

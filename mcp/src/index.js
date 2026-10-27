@@ -15,6 +15,7 @@ import { SCHEDULE_TOOLS } from './schedule-tools.js'
 import { ROUTINE_TOOLS } from './routine-tools.js'
 import { PROGRESSION_TOOLS } from './progression-tools.js'
 import { ROTATION_TOOLS } from './rotation-tools.js'
+import { EQUIPMENT_TOOLS } from './equipment-tools.js'
 
 const server = new McpServer({
   name: 'opengym',
@@ -36,7 +37,7 @@ try {
 }
 
 const READS = new Set(TOOLS)
-for (const t of [...TOOLS, ...WRITE_TOOLS, ...BODY_TOOLS, ...SCHEDULE_TOOLS, ...ROUTINE_TOOLS, ...PROGRESSION_TOOLS, ...ROTATION_TOOLS]) {
+for (const t of [...TOOLS, ...WRITE_TOOLS, ...BODY_TOOLS, ...SCHEDULE_TOOLS, ...ROUTINE_TOOLS, ...PROGRESSION_TOOLS, ...ROTATION_TOOLS, ...EQUIPMENT_TOOLS]) {
   server.tool(
     t.name,
     t.description,
@@ -45,7 +46,7 @@ for (const t of [...TOOLS, ...WRITE_TOOLS, ...BODY_TOOLS, ...SCHEDULE_TOOLS, ...
       try {
         // Through the api, a read tool first checks the revision and downloads the profile only
         // when it moved; reading the data folder this does nothing.
-        if (READS.has(t)) await refresh()
+        if (READS.has(t) || t.read) await refresh()
         // log_workout talks to the server, so a handler may answer with a promise.
         const result = await t.handler(params || {})
         return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] }
