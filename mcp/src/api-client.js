@@ -11,6 +11,11 @@
    passkeys make too — and it is never put into a result or an error message. */
 
 const LOOPBACK = new Set(['localhost', '127.0.0.1', '[::1]', '::1'])
+// With OPENGYM_PRIVATE_HTTP=1, plain http is also allowed to a container name on a Docker
+// network: one label, no dot, which no DNS outside the machine answers for. That is the MCP
+// running beside the api on an internal network, where there is no certificate to be had and no
+// wire outside the machine for the token to cross. A LAN address is not that, and stays https.
+const containerName = h => /^[a-z0-9]([a-z0-9_-]*[a-z0-9])?$/i.test(h) && !/^\d+$/.test(h)
 // What a session token is made of (api/server.js makeSession: `uid:exp:ver` and a base64url MAC).
 // Checked before it goes into a header, because the header check's own error quotes the value.
 const TOKEN_CHARS = /^[A-Za-z0-9._:~+/=-]+$/
@@ -23,14 +28,18 @@ function fail(code, message, extra) {
   return err
 }
 
-/** The server's base URL, checked: https, or http to this machine. Throws ENOCONFIG. */
-export function apiBase(raw) {
+/**
+ * The server's base URL, checked: https, or http to this machine (or, with OPENGYM_PRIVATE_HTTP=1,
+ * to a container name). Throws ENOCONFIG.
+ */
+export function apiBase(raw, env = process.env) {
   let u
   try { u = new URL(String(raw || '').trim()) } catch {
     throw fail('ENOCONFIG', 'OPENGYM_URL is not a URL: the address you open openGym at, e.g. https://gym.example.com')
   }
-  if (u.protocol !== 'https:' && !(u.protocol === 'http:' && LOOPBACK.has(u.hostname))) {
-    throw fail('ENOCONFIG', 'OPENGYM_URL must be https:// (plain http only for localhost): the token it carries is a full sign-in to your profile')
+  const privateOk = (env.OPENGYM_PRIVATE_HTTP || '').trim() === '1' && containerName(u.hostname)
+  if (u.protocol !== 'https:' && !(u.protocol === 'http:' && (LOOPBACK.has(u.hostname) || privateOk))) {
+    throw fail('ENOCONFIG', 'OPENGYM_URL must be https:// (plain http only for localhost, or for a container name with OPENGYM_PRIVATE_HTTP=1): the token it carries is a full sign-in to your profile')
   }
   // A subpath install (/gym) keeps its path; the routes hang off it.
   return u.origin + u.pathname.replace(/\/+$/, '')
@@ -46,7 +55,7 @@ export function apiConfig(env = process.env) {
   if (!TOKEN_CHARS.test(token)) {
     throw fail('ENOCONFIG', 'OPENGYM_TOKEN has characters a token never has (a line break or space from copying it?): paste it again as one line')
   }
-  return { base: apiBase(url), token }
+  return { base: apiBase(url, env), token }
 }
 
 /**

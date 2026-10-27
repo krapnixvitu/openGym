@@ -146,7 +146,11 @@ Things to know about that token:
 - It is a **full sign-in to your profile**, the same kind the paired phone app holds, not a
   workout-only key. Your client's config file holds it in plain text; treat it like a password.
 - `OPENGYM_URL` has to be `https://` (plain `http://` only to `localhost`), so it never crosses a
-  network in the clear.
+  network in the clear. One exception, opt-in: when the MCP runs in a container beside the api
+  on an internal Docker network, set `OPENGYM_PRIVATE_HTTP=1` and point it at the api container
+  by name, e.g. `http://api:3000`. Only a one-label name is accepted that way, never a LAN
+  address or a domain. Keep that network `internal: true`, and mind DNS search domains: a bare
+  name must resolve to the container, not to a host on your LAN.
 - It lasts `SESSION_DAYS` (90 days by default). **Sign out everywhere** in Settings ends it at
   once. Either way `log_workout` then says the token was not accepted: pair again.
 - Pairing again gets you a new token but does **not** end the old one. To retire a token you
