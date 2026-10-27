@@ -90,6 +90,11 @@ session. The routine's own weight is the last fallback the session builder consu
 first; its reps hold unless a policy that moves reps moved them, or the profile starts planned
 sessions from the last session (`starts_from`). Ask `preview_session` before naming a weight.
 
+When a client connects, the server also sends a short map of openGym (`src/instructions.js`, the
+MCP `instructions` field): how routines, the week plan, workouts, units and exercise ids fit
+together, and to dry-run a write before saving it. Clients put it in the model's context next to
+the tool list.
+
 Each tool returns JSON the LLM can format as it likes; structured fields (sets, dates, levels)
 are pre-formatted into human-readable labels in `src/labels.js` so the LLM doesn't need to
 re-interpret them.
