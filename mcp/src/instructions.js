@@ -17,4 +17,5 @@ Using the tools:
 - Answers about training use the same calculations as the app's own screens, so prefer them to working numbers out yourself.
 - Writing tools change the person's real data on every device within about half a minute. When you had to interpret what they said, call the tool with dry_run: true first, show the result, and save only once they agree.
 - A routine's exercises are slots, numbered from 1 in get_routine's order. edit_routine makes its changes in order, each on the routine as the one before left it; restore_routine undoes the last routine change.
+- There is no separate deload switch. For a lighter week, duplicate_routine the week's routines, lighten them with edit_routine and exclude_from_progression, and put them on those dates with override_day; afterwards override_day null and delete_routine the copies.
 - When a tool answers with problems or candidates, put the choice to the person instead of guessing.`
