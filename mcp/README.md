@@ -67,7 +67,7 @@ the server's stderr.
 
 ## Tools
 
-Nine read-only tools, and four that write:
+Nine read-only tools, and seven that write:
 
 | Tool | What it answers |
 |---|---|
@@ -83,6 +83,9 @@ Nine read-only tools, and four that write:
 | `log_workout` | *Writes.* "I did dumbbell curls, 12 kg, 12/12/10" → a logged session in your history, on every device. Needs pairing: [Logging workouts](#logging-workouts). |
 | `update_workout` | *Writes.* "Set 2 of Monday's curls was 14 kg, not 12" → that set corrected, as an edit in History makes it (volume, PR badges and the next weight worked out again). Sets, reps, seconds, warm-up/failure marks, removed sets, the session note. |
 | `swap_exercise` | *Writes.* "That was the dumbbell press, not the barbell one" → the entry becomes the right exercise with its sets kept; badges and next weights follow for both. |
+| `add_to_workout` | *Writes.* Forgotten sets onto an exercise of a logged workout, or a forgotten exercise onto it, described as for `log_workout`. |
+| `move_workout` | *Writes.* A logged workout's date, start time or duration; it keeps its length when moved, and badges follow the new order. |
+| `exclude_from_progression` | *Writes.* Keeps a logged session (or one exercise in it) out of progression, or counts it again: the injury day, the deload. |
 | `delete_workout` | *Writes.* Removes a session from history on every device, as History's Delete does. |
 
 `get_routine` and `preview_session` answer two different questions, and confusing them is the
@@ -160,8 +163,7 @@ Things to know about that token:
 ### What it does not do (yet)
 
 - Cardio by time and speed, supersets, per-side sets. Log those in the app.
-- Edit a set logged per side, add sets or exercises to a logged workout, or move it to another
-  day. Do those in the app's History.
+- Edit a set logged per side. Do that in the app's History.
 - Complete a routine's session. A logged workout is freestyle: it counts in history, stats,
   1RM, PRs and the muscle map, and like any freestyle session it can inform a routine that has
   no history of its own, but it does not tick off a planned day or a coach week's session.

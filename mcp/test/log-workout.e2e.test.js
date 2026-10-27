@@ -39,7 +39,7 @@ const get = async p => (await fetch(base + p, { headers: { authorization: 'Beare
 const stored = () => JSON.parse(fs.readFileSync(path.join(dataDir, `state-${UID}.json`), 'utf8'))
 
 describe.skipIf(!HAVE_API)('log_workout against the real api', () => {
-  let logWorkout, updateWorkout, deleteWorkout, swapExercise, getState, TOOLS
+  let logWorkout, updateWorkout, deleteWorkout, swapExercise, addToWorkout, moveWorkoutTool, getState, TOOLS
   beforeAll(async () => {
     dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gym-mcp-e2e-'))
     fs.writeFileSync(path.join(dataDir, 'secret'), SECRET, { mode: 0o600 })
@@ -65,7 +65,7 @@ describe.skipIf(!HAVE_API)('log_workout against the real api', () => {
     // The read tools read the same directory the server writes, as on a real install.
     process.env.OPENGYM_DATA = dataDir
     process.env.OPENGYM_UID = UID
-    ;({ logWorkout, updateWorkout, deleteWorkout, swapExercise } = await import('../src/write-tools.js'))
+    ;({ logWorkout, updateWorkout, deleteWorkout, swapExercise, addToWorkout, moveWorkoutTool } = await import('../src/write-tools.js'))
     ;({ getState } = await import('../src/state.js'))
     ;({ TOOLS } = await import('../src/tools.js'))
   }, 30000)
@@ -175,8 +175,21 @@ describe.skipIf(!HAVE_API)('log_workout against the real api', () => {
     expect(e).toMatchObject({ id: '0031', sets: [{ w: 100, r: 6, done: true }] })
   })
 
-  test('delete_workout: gone from the file, with the removal on record so no device brings it back', async () => {
+  test('add_to_workout and move_workout: stored, and the history stays in date order', async () => {
     const id = stored().workouts.find(w => w.d === '2026-10-14').id
+    expect((await addToWorkout.handler({ workout_id: id, add: [{ exercise: 1, sets: [{ reps: 5, weight: 100 }] }] }, { env: env() })).updated).toBe(true)
+    expect(stored().workouts.find(x => x.id === id).entries[0].sets).toHaveLength(2)
+    expect((await moveWorkoutTool.handler({ workout_id: id, date: '2026-10-13', duration_min: 50 }, { env: env() })).moved).toBe(true)
+    const after = stored()
+    const w = after.workouts.find(x => x.id === id)
+    expect(w.d).toBe('2026-10-13')
+    expect(w.end - w.start).toBe(50 * 60000)
+    const days = after.workouts.map(x => x.d)
+    expect(days).toEqual([...days].sort())
+  })
+
+  test('delete_workout: gone from the file, with the removal on record so no device brings it back', async () => {
+    const id = stored().workouts.find(w => w.d === '2026-10-13').id
     const r = await deleteWorkout.handler({ workout_id: id }, { env: env() })
     expect(r.deleted).toBe(true)
     const after = stored()

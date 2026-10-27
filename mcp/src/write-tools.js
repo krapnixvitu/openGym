@@ -15,6 +15,8 @@ import { buildLoggedWorkout, appendLoggedWorkout, findDuplicate, resolveExercise
 import { editCompletedSession, saveWorkoutEdit, deleteEditedWorkout } from '../../frontend/src/lib/session-edit.js'
 import { friendlyDuration } from './labels.js'
 import { modeOf } from '../../frontend/src/lib/history.js'
+import { moveWorkout, setWorkoutDuration, startTimeOf, durationMinOf, endsInFuture, MAX_DURATION_MIN } from '../../frontend/src/lib/workout-date.js'
+import { setSessionNoProg, setEntryNoProg } from '../../frontend/src/lib/session-noprog.js'
 
 const localIso = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0')
 const hhmm = t => { const d = new Date(t); return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0') }
@@ -382,4 +384,145 @@ export const swapExercise = {
   },
 }
 
-export const WRITE_TOOLS = [logWorkout, updateWorkout, deleteWorkout, swapExercise]
+export const addToWorkout = {
+  name: 'add_to_workout',
+  description: [
+    'Add to a workout already in the history: sets the user forgot to an exercise in it, or an exercise they forgot entirely.',
+    'Call get_workout first. To add sets to an exercise that is there, give `exercise` as its position in get_workout\'s `entries` (from 1); to add an exercise, give `name` (matched as log_workout matches it).',
+    'Sets are described as for log_workout, in `unit` (default the profile\'s). Volume, PR badges and next weights are worked out again.',
+    'Call with dry_run: true first when you had to interpret anything.',
+  ].join(' '),
+  schema: {
+    workout_id: z.string().min(1).describe('The id from list_workouts or get_workout.'),
+    add: z.array(z.object({
+      exercise: z.number().int().min(1).optional().describe('Add sets to this entry: its position in get_workout\'s `entries`, from 1.'),
+      name: z.string().min(1).max(120).optional().describe('Or add an exercise not in the workout: a name or an exercise id.'),
+      create_custom: z.boolean().optional().describe('Create `name` as the user\'s own exercise when the library has nothing matching. Only after the user confirms.'),
+      body_part: z.enum(BODY_PARTS).optional(),
+      sets: z.array(setSchema).min(1).max(LOG_LIMITS.maxSets),
+    })).min(1).max(LOG_LIMITS.maxExercises),
+    unit: z.enum(['kg', 'lb']).optional().describe('The unit the user gave weights in; defaults to the profile\'s. Converted when it differs.'),
+    dry_run: z.boolean().optional(),
+  },
+  handler: async (params, { env = process.env, fetchImpl } = {}) => {
+    const now = Date.now()
+    let unit = null
+    return changeProfile({ tool: 'add_to_workout', env, fetchImpl, now, dryRun: !!params.dry_run }, S => {
+      unit = unit || params.unit || (S.unit === 'lb' ? 'lb' : 'kg')
+      const w = (S.workouts || []).find(x => x?.id === params.workout_id)
+      if (!w) throw fail('ENOENT', `no workout with id ${params.workout_id} (list_workouts gives the ids)`)
+      const bad = params.add.findIndex(a => (a.exercise == null) === (a.name == null))
+      if (bad >= 0) return { save: false, result: { updated: false, problem: `add ${bad + 1}: give either exercise (an entry's position) or name, not both`, next: 'Nothing was saved.' } }
+      const missing = params.add.find(a => a.exercise != null && !w.entries?.[a.exercise - 1])
+      if (missing) return { save: false, result: { updated: false, problem: `exercise ${missing.exercise}: the workout has ${(w.entries || []).length}`, next: 'Nothing was saved.' } }
+      // The rows are built the way log_workout builds them (matching, units, dumbbell meaning,
+      // limits), as a workout of their own on that day, then moved into the record.
+      const meanings = Object.fromEntries((w.entries || []).map(e => [e.id, e.target?.dbLoad || 'as']))
+      const input = {
+        date: w.d,
+        exercises: params.add.map(a => ({
+          exercise: a.exercise != null ? w.entries[a.exercise - 1].id : a.name,
+          createCustom: a.create_custom, bodyPart: a.body_part,
+          sets: a.sets.map(x => ({ reps: x.reps, seconds: x.seconds, weight: x.weight, warmup: x.warmup, failure: x.failure, rir: x.rir, rpe: x.rpe })),
+        })),
+      }
+      const built = withCustomsIndexed(S, () => buildLoggedWorkout(S, input, { now, unit, meanings }))
+      if (built.problems) return { save: false, result: { updated: false, problems: built.problems.filter(p => p.field !== 'start' && p.field !== 'durationMin'), next: 'Nothing was saved. Settle these with the user and call again.' } }
+      let saved = null
+      withCustomsIndexed({ customEx: [...(S.customEx || []), ...built.customEx] }, () => inEditor(S, params.workout_id, active => {
+        params.add.forEach((a, i) => {
+          const entry = built.workout.entries[i]
+          if (a.exercise != null) active.entries[a.exercise - 1].sets.push(...entry.sets)
+          else active.entries.push(entry)
+        })
+        if (built.customEx.length) {
+          const known = new Set((S.customEx || []).map(c => c?.id))
+          S.customEx = [...(S.customEx || []), ...built.customEx.filter(c => !known.has(c.id))]
+        }
+        saved = saveWorkoutEdit(S, now)
+      }))
+      const view = { workout_id: saved.id, date: saved.d, volume: saved.vol, exercises: saved.entries.map(e => ({ id: e.id, name: entryView(e, S).name, sets: e.sets.map(setView) })) }
+      if (params.dry_run) return { save: false, result: { updated: false, dry_run: true, would_save: view } }
+      return { result: { updated: true, ...view }, trail: `added to ${saved.id} of ${saved.d}` }
+    })
+  },
+}
+
+export const moveWorkoutTool = {
+  name: 'move_workout',
+  description: [
+    'Change when a workout in the history happened: its date, its start time, or how long it took (the session nobody ended until they got home).',
+    'A new date or start keeps its length, and PR badges are worked out again in the new order. It cannot end later than now.',
+    'Times are the MCP server\'s local time, as get_workout and log_workout report them.',
+  ].join(' '),
+  schema: {
+    workout_id: z.string().min(1).describe('The id from list_workouts or get_workout.'),
+    date: isoDate().optional().describe('The day it really was, YYYY-MM-DD, up to today.'),
+    start: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'HH:MM, 24 h').optional().describe('The start time, HH:MM.'),
+    duration_min: z.number().int().min(1).max(MAX_DURATION_MIN).optional().describe('How long it took, in minutes.'),
+  },
+  handler: async (params, { env = process.env, fetchImpl } = {}) => {
+    if (params.date == null && params.start == null && params.duration_min == null) throw fail('EINVAL', 'nothing to change: give date, start, duration_min, or several')
+    const now = Date.now()
+    return changeProfile({ tool: 'move_workout', env, fetchImpl, now }, S => {
+      const w = (S.workouts || []).find(x => x?.id === params.workout_id)
+      if (!w) throw fail('ENOENT', `no workout with id ${params.workout_id} (list_workouts gives the ids)`)
+      const date = params.date ?? w.d, time = params.start ?? startTimeOf(w), minutes = params.duration_min ?? durationMinOf(w)
+      const refuse = problem => ({ save: false, result: { moved: false, problem, next: 'Nothing was saved.' } })
+      if (date > localIso(new Date(now))) return refuse('that day is in the future: pick a day up to today')
+      if (endsInFuture(date, time, minutes, now)) return refuse('the session would still be going on now: pick an earlier start or a shorter duration')
+      let workouts = S.workouts
+      if (date !== w.d || time !== startTimeOf(w)) workouts = moveWorkout(workouts, w, date, time, now) || workouts
+      if (params.duration_min != null) {
+        const cur = workouts.find(x => x?.id === params.workout_id)
+        workouts = setWorkoutDuration(workouts, cur, minutes, now) || workouts
+      }
+      if (workouts === S.workouts) return { save: false, result: { moved: false, message: 'It already is on that day, at that time, that long; nothing changed.' } }
+      S.workouts = workouts
+      const after = workouts.find(x => x?.id === params.workout_id)
+      return {
+        result: { moved: true, workout_id: after.id, date: after.d, start: startTimeOf(after), duration: friendlyDuration(after.end - after.start) },
+        trail: `moved ${after.id} to ${after.d} ${startTimeOf(after)}, ${durationMinOf(after)} min`,
+      }
+    })
+  },
+}
+
+export const excludeFromProgression = {
+  name: 'exclude_from_progression',
+  description: [
+    'Keep a workout in the history out of progression, or count it again: an injury day or a deload whose light weights should not set the next session\'s targets.',
+    'The workout still counts in history, stats and the muscle map. Without `exercise` it applies to the whole session; with it, to that one entry (its position in get_workout\'s `entries`, from 1).',
+    'A deload or rehab routine keeps its own exercises out whatever this says.',
+  ].join(' '),
+  schema: {
+    workout_id: z.string().min(1).describe('The id from list_workouts or get_workout.'),
+    exclude: z.boolean().describe('true keeps it out, false counts it again.'),
+    exercise: z.number().int().min(1).optional().describe('Only this entry, by position from 1.'),
+  },
+  handler: async (params, { env = process.env, fetchImpl } = {}) => {
+    return changeProfile({ tool: 'exclude_from_progression', env, fetchImpl }, S => {
+      // As the workout screen decides it (Workout.jsx routineKeepsOut): the routine's own setting.
+      const routineOwns = e => !!e?.rid && (S.routines || []).some(r => r?.id === e.rid && r.excludeFromProgression === true)
+      let problem = null, saved = null, unchanged = false
+      inEditor(S, params.workout_id, active => {
+        if (params.exercise != null) {
+          if (!active.entries[params.exercise - 1]) { problem = `exercise ${params.exercise}: the workout has ${active.entries.length}`; return }
+          setEntryNoProg(active, params.exercise - 1, params.exclude)
+        } else setSessionNoProg(active, params.exclude, routineOwns)
+        // Compared on the flags themselves: a save would also tidy fields an import left out, and
+        // stamp the record for nothing.
+        const flags = entries => (entries || []).map(e => e?.noProg === true)
+        const before = (S.workouts || []).find(x => x?.id === params.workout_id)
+        if (JSON.stringify(flags(before.entries)) === JSON.stringify(flags(active.entries))) { unchanged = true; return }
+        saved = saveWorkoutEdit(S)
+      })
+      if (problem) return { save: false, result: { updated: false, problem, next: 'Nothing was saved.' } }
+      if (unchanged) return { save: false, result: { updated: false, message: 'It already was that way; nothing changed.' } }
+      const out = saved.entries.map((e, i) => ({ exercise: i + 1, id: e.id, counts_for_progression: e.noProg !== true }))
+      return { result: { updated: true, workout_id: saved.id, date: saved.d, entries: out }, trail: `${params.exclude ? 'excluded' : 'counted'} ${params.exercise != null ? 'exercise ' + params.exercise + ' of ' : ''}${saved.id}` }
+    })
+  },
+}
+
+export const WRITE_TOOLS = [logWorkout, updateWorkout, deleteWorkout, swapExercise, addToWorkout, moveWorkoutTool, excludeFromProgression]
