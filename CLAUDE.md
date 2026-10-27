@@ -145,7 +145,8 @@ Stdio MCP bridge (`@modelcontextprotocol/sdk`) that reads one user's data straig
 `DATA_DIR`. `state.js` loads and derives the data, `tools.js` defines the read tools (zod schemas),
 `labels.js` maps keys to readable labels, `index.js` wires it together. The one write tool,
 `log_workout` (`write-tools.js`), never writes the file: it builds the workout with
-`frontend/src/lib/log-workout.js` and saves it with `PUT /api/data` over a paired-session token
+`frontend/src/lib/log-workout.js` and saves it through `changeProfile`, the read, `PUT /api/data`
+and 409-retry loop every write tool shares, over a paired-session token
 (`api-client.js`, `scripts/pair.mjs`), the way a device syncs. See `mcp/README.md`.
 
 ### Passkeys and self-hosting constraints

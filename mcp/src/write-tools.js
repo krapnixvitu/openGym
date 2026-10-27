@@ -89,6 +89,64 @@ function viewOf(w, S, resolved) {
   }
 }
 
+/**
+ * One change to the profile, saved the way a device saves it: GET /api/data, `change` edits a copy,
+ * PUT it with the revision it was read at, and on a 409 run `change` again on the document the
+ * server sent back, so another device's write in between is kept. Every write tool goes through
+ * here; none writes the state file.
+ *
+ * `change(S)` edits S in place and returns { result, trail } (trail: the operator's stderr line),
+ * or { save: false, result } to answer without writing (a dry run, a problem to put to the user).
+ * Resolves `result` plus the revision it landed at, or the no-save result as it is.
+ */
+export async function changeProfile({ tool, env = process.env, fetchImpl, now = Date.now(), dryRun = false }, change) {
+  const cfg = apiConfig(env)
+  const opts = fetchImpl ? { fetchImpl } : {}
+  saves = saves.filter(t => now - t < WINDOW_MS)
+  if (!dryRun && saves.length >= WRITE_LIMIT) {
+    throw fail('ERATE', `the openGym tools already saved ${WRITE_LIMIT} changes in the last hour, the most they take in one go; nothing was saved. Wait a bit, or make the rest in the app.`)
+  }
+
+  const me = await apiFetch(cfg, '/api/me', opts)
+  const uid = me.body?.user?.id
+  // A guard that cannot read whose token this is refuses rather than steps aside.
+  if (typeof uid !== 'string' || !uid) throw fail('EAPI', 'the openGym server did not say which profile OPENGYM_TOKEN belongs to (GET /api/me); nothing was saved')
+  const local = localUid()
+  if (local && local !== uid) {
+    // The ids go to the operator on stderr, not into the model's context (state.js ambiguousUid).
+    console.error(`[opengym-mcp] OPENGYM_TOKEN is for profile ${uid}, this server reads ${local}`)
+    throw fail('EPROFILE', 'OPENGYM_TOKEN belongs to another profile than the one this server reads: pair again from the right profile, or set OPENGYM_UID to match (the ids are on the server\'s stderr)')
+  }
+
+  let got = await apiFetch(cfg, '/api/data', opts)
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    const doc = got.body?.state
+    if (!doc || typeof doc !== 'object') {
+      throw fail('ENOSTATE', 'this profile has no synced data on the server yet: open openGym and sign in on a device once, then try again')
+    }
+    // The document exactly as the server sent it, plus the change: anything else in the PUT (a
+    // default filled in here) would be stamped as an edit made now and land on every device.
+    const S = structuredClone(doc)
+    const out = change(S)
+    if (out.save === false) return out.result
+    const put = await apiFetch(cfg, '/api/data', { ...opts, method: 'PUT', body: { state: S, baseRev: got.body.rev ?? 0, ...(typeof doc._wid === 'string' ? { baseWid: doc._wid } : {}) } })
+    if (put.status !== 409) {
+      invalidate()
+      saves.push(now)
+      // The operator's trail: what changed and at which revision. Never the token, and nothing
+      // the model sees.
+      console.error(`[opengym-mcp] ${tool} ${out.trail}, rev ${put.body?.rev ?? '?'}`)
+      return { ...out.result, revision: put.body?.rev ?? null }
+    }
+    // A 409 without the current document (a proxy's page) is not something to build on.
+    if (!put.body?.state || typeof put.body.state !== 'object' || typeof put.body.rev !== 'number') {
+      throw fail('EAPI', 'the openGym server answered 409 without the current profile; nothing was saved')
+    }
+    got = { status: 200, body: { state: put.body.state, rev: put.body.rev } }
+  }
+  throw fail('ECONFLICT', `the profile kept changing on the server (${MAX_ATTEMPTS} attempts); nothing was saved, try again in a moment`)
+}
+
 const setSchema = z.object({
   reps: z.number().int().min(1).max(LOG_LIMITS.maxReps).optional().describe('Reps done. Give reps for a rep exercise, or seconds for a hold, never both in one exercise.'),
   seconds: z.number().min(1).max(LOG_LIMITS.maxSec).optional().describe('Seconds held, for a timed exercise (plank, hang, wall sit).'),
@@ -128,77 +186,37 @@ export const logWorkout = {
     allow_duplicate: z.boolean().optional().describe('Log it even though the same sets are already logged that day (a genuine second session). Give it a different start or name too.'),
   },
   handler: async (params, { env = process.env, fetchImpl } = {}) => {
-    const cfg = apiConfig(env)
-    const opts = fetchImpl ? { fetchImpl } : {}
     // One clock for every attempt: a retry after a conflict files the same workout, not a later one.
     const now = Date.now()
-    saves = saves.filter(t => now - t < WINDOW_MS)
-    if (!params.dry_run && saves.length >= WRITE_LIMIT) {
-      throw fail('ERATE', `log_workout already saved ${WRITE_LIMIT} workouts in the last hour, the most it takes in one go; nothing was saved. Wait a bit, or log the rest in the app.`)
-    }
     const input = inputOf({ ...params, date: params.date || localIso(new Date(now)) })
-
-    const me = await apiFetch(cfg, '/api/me', opts)
-    const uid = me.body?.user?.id
-    // A guard that cannot read whose token this is refuses rather than steps aside.
-    if (typeof uid !== 'string' || !uid) throw fail('EAPI', 'the openGym server did not say which profile OPENGYM_TOKEN belongs to (GET /api/me); nothing was saved')
-    const local = localUid()
-    if (local && local !== uid) {
-      // The ids go to the operator on stderr, not into the model's context (state.js ambiguousUid).
-      console.error(`[opengym-mcp] OPENGYM_TOKEN is for profile ${uid}, this server reads ${local}`)
-      throw fail('EPROFILE', 'OPENGYM_TOKEN belongs to another profile than the one this server reads: pair again from the right profile, or set OPENGYM_UID to match (the ids are on the server\'s stderr)')
-    }
-
-    let got = await apiFetch(cfg, '/api/data', opts)
     // A description without a unit is in the profile's, as the profile was when first read: a
-    // retry after another device switched kg ↔ lb reads the same numbers the same way.
+    // retry after another device switched kg <-> lb reads the same numbers the same way.
     let unit = null, meanings = null
-    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-      const doc = got.body?.state
-      if (!doc || typeof doc !== 'object') {
-        throw fail('ENOSTATE', 'this profile has no synced data on the server yet: open openGym and sign in on a device once, then try again')
-      }
-      // The document exactly as the server sent it, plus the workout: anything else in the PUT —
-      // a default filled in here — would be stamped as an edit made now and land on every device.
-      const S = structuredClone(doc)
+    return changeProfile({ tool: 'log_workout', env, fetchImpl, now, dryRun: !!params.dry_run }, S => {
       unit = unit || (S.unit === 'lb' ? 'lb' : 'kg')
       // The profile's own exercises indexed for the build, as the app has them: a custom one-arm
       // dumbbell press counts one bell, a custom assisted machine folds towards less help.
       const built = withCustomsIndexed(S, () => buildLoggedWorkout(S, input, { now, unit, meanings }))
       if (built.problems) {
-        return { logged: false, problems: built.problems, next: 'Nothing was saved. Settle these with the user (pick a candidate id, fix a set) and call again.' }
+        return { save: false, result: { logged: false, problems: built.problems, next: 'Nothing was saved. Settle these with the user (pick a candidate id, fix a set) and call again.' } }
       }
       // What each dumbbell weight meant on the first read stays what it means on a retry.
       meanings = meanings || Object.fromEntries(built.workout.entries.map(e => [e.id, e.target?.dbLoad || 'as']))
-      const preview = viewOf(built.workout, S, built)
       if (params.dry_run) {
         const dup = findDuplicate(S, built.workout)
-        return { logged: false, dry_run: true, would_log: preview, ...(dup && (dup.sameRequest || !params.allow_duplicate) ? { duplicate_of: dup.workout.id } : {}) }
+        return { save: false, result: { logged: false, dry_run: true, would_log: viewOf(built.workout, S, built), ...(dup && (dup.sameRequest || !params.allow_duplicate) ? { duplicate_of: dup.workout.id } : {}) } }
       }
       const added = withCustomsIndexed({ customEx: [...(S.customEx || []), ...built.customEx] }, () =>
         appendLoggedWorkout(S, built, { now, allowDuplicate: params.allow_duplicate === true }))
       if (!added.added) {
-        return { logged: false, duplicate: true, workout_id: added.workout.id, date: added.workout.d, message: 'This session is already in the history; nothing was added. If it really was a second session, call again with allow_duplicate: true and a different start or name.' }
+        return { save: false, result: { logged: false, duplicate: true, workout_id: added.workout.id, date: added.workout.d, message: 'This session is already in the history; nothing was added. If it really was a second session, call again with allow_duplicate: true and a different start or name.' } }
       }
-      const put = await apiFetch(cfg, '/api/data', { ...opts, method: 'PUT', body: { state: S, baseRev: got.body.rev ?? 0, ...(typeof doc._wid === 'string' ? { baseWid: doc._wid } : {}) } })
-      if (put.status !== 409) {
-        invalidate()
-        saves.push(now)
-        // The operator's trail (stderr, as the profile guard's): which workout went in, for what
-        // day and at which revision. Never the token, and nothing the model sees.
-        const sets = added.workout.entries.reduce((n, e) => n + e.sets.length, 0)
-        console.error(`[opengym-mcp] log_workout saved ${added.workout.id} for ${added.workout.d} (${added.workout.entries.length} exercises, ${sets} sets), rev ${put.body?.rev ?? '?'}`)
-        return { logged: true, ...viewOf(added.workout, S, built), revision: put.body?.rev ?? null }
+      const sets = added.workout.entries.reduce((n, e) => n + e.sets.length, 0)
+      return {
+        result: { logged: true, ...viewOf(added.workout, S, built) },
+        trail: `saved ${added.workout.id} for ${added.workout.d} (${added.workout.entries.length} exercises, ${sets} sets)`,
       }
-      // Another device wrote in between: the server sent its current document back with the 409,
-      // so the workout is built again on top of that one. A 409 without one (a proxy's page) is
-      // not something to build on.
-      if (!put.body?.state || typeof put.body.state !== 'object' || typeof put.body.rev !== 'number') {
-        throw fail('EAPI', 'the openGym server answered 409 without the current profile; nothing was saved')
-      }
-      got = { status: 200, body: { state: put.body.state, rev: put.body.rev } }
-    }
-    throw fail('ECONFLICT', `the profile kept changing on the server (${MAX_ATTEMPTS} attempts); nothing was saved, try again in a moment`)
+    })
   },
 }
 
