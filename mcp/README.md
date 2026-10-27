@@ -68,7 +68,7 @@ the server's stderr.
 
 ## Tools
 
-Nine read-only tools, and one that writes:
+Nine read-only tools, and four that write:
 
 | Tool | What it answers |
 |---|---|
@@ -82,6 +82,9 @@ Nine read-only tools, and one that writes:
 | `estimate_1rm` | All-time best 1RM for an exercise + the trend, or a PR table across all exercises. |
 | `muscle_balance` | Which muscles I've trained this week/month/all-time, ranked + which I've neglected. |
 | `log_workout` | *Writes.* "I did dumbbell curls, 12 kg, 12/12/10" → a logged session in your history, on every device. Needs pairing: [Logging workouts](#logging-workouts). |
+| `update_workout` | *Writes.* "Set 2 of Monday's curls was 14 kg, not 12" → that set corrected, as an edit in History makes it (volume, PR badges and the next weight worked out again). Sets, reps, seconds, warm-up/failure marks, removed sets, the session note. |
+| `swap_exercise` | *Writes.* "That was the dumbbell press, not the barbell one" → the entry becomes the right exercise with its sets kept; badges and next weights follow for both. |
+| `delete_workout` | *Writes.* Removes a session from history on every device, as History's Delete does. |
 
 `get_routine` and `preview_session` answer two different questions, and confusing them is the
 easiest way for a coach to give wrong advice. `get_routine` reports what the routine *stores*.
@@ -179,7 +182,8 @@ set, the read tools read the folder as before.
 ### What it does not do (yet)
 
 - Cardio by time and speed, supersets, per-side sets. Log those in the app.
-- Edit or delete a workout. Fix a mistake in the app's History.
+- Edit a set logged per side, add sets or exercises to a logged workout, or move it to another
+  day. Do those in the app's History.
 - Complete a routine's session. A logged workout is freestyle: it counts in history, stats,
   1RM, PRs and the muscle map, and like any freestyle session it can inform a routine that has
   no history of its own, but it does not tick off a planned day or a coach week's session.

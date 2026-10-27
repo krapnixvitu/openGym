@@ -39,7 +39,7 @@ const get = async p => (await fetch(base + p, { headers: { authorization: 'Beare
 const stored = () => JSON.parse(fs.readFileSync(path.join(dataDir, `state-${UID}.json`), 'utf8'))
 
 describe.skipIf(!HAVE_API)('log_workout against the real api', () => {
-  let logWorkout, getState, TOOLS
+  let logWorkout, updateWorkout, deleteWorkout, swapExercise, getState, TOOLS
   beforeAll(async () => {
     dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gym-mcp-e2e-'))
     fs.writeFileSync(path.join(dataDir, 'secret'), SECRET, { mode: 0o600 })
@@ -65,7 +65,7 @@ describe.skipIf(!HAVE_API)('log_workout against the real api', () => {
     // The read tools read the same directory the server writes, as on a real install.
     process.env.OPENGYM_DATA = dataDir
     process.env.OPENGYM_UID = UID
-    ;({ logWorkout } = await import('../src/write-tools.js'))
+    ;({ logWorkout, updateWorkout, deleteWorkout, swapExercise } = await import('../src/write-tools.js'))
     ;({ getState } = await import('../src/state.js'))
     ;({ TOOLS } = await import('../src/tools.js'))
   }, 30000)
@@ -155,5 +155,32 @@ describe.skipIf(!HAVE_API)('log_workout against the real api', () => {
     expect(days).toEqual([...days].sort())
     // into the past: a backfill, so the confirmed weight stays where the device left it
     expect(after.exWeights['0025']).toEqual(DOC.exWeights['0025'])
+  })
+
+  test('update_workout: the corrected set is stored, with the volume worked out again', async () => {
+    const id = stored().workouts.find(w => w.d === '2026-10-14').id
+    const r = await updateWorkout.handler({ workout_id: id, sets: [{ exercise: 1, set: 1, weight: 100, reps: 6 }] }, { env: env() })
+    expect(r.updated).toBe(true)
+    const w = stored().workouts.find(x => x.id === id)
+    expect(w.entries[0].sets[0]).toMatchObject({ w: 100, r: 6, done: true })
+    expect(w.vol).toBe(600)
+    expect(stored().restSec).toBe(75)
+  })
+
+  test('swap_exercise: the entry is stored as the other exercise, its sets as they were', async () => {
+    const id = stored().workouts.find(w => w.d === '2026-10-14').id
+    const r = await swapExercise.handler({ workout_id: id, exercise: 1, to: '0031' }, { env: env() })
+    expect(r.swapped).toBe(true)
+    const e = stored().workouts.find(x => x.id === id).entries[0]
+    expect(e).toMatchObject({ id: '0031', sets: [{ w: 100, r: 6, done: true }] })
+  })
+
+  test('delete_workout: gone from the file, with the removal on record so no device brings it back', async () => {
+    const id = stored().workouts.find(w => w.d === '2026-10-14').id
+    const r = await deleteWorkout.handler({ workout_id: id }, { env: env() })
+    expect(r.deleted).toBe(true)
+    const after = stored()
+    expect(after.workouts.some(w => w.id === id)).toBe(false)
+    expect(JSON.stringify(after.deleted?.workouts || {})).toContain(id)
   })
 })

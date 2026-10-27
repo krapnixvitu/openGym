@@ -1,4 +1,4 @@
-/* The write tool. log_workout files a session the user describes ("dumbbell curls, 12 kg,
+/* The write tools. log_workout files a session the user describes ("dumbbell curls, 12 kg,
    12/12/10, last set to failure") into their history, through their own openGym server
    (api-client.js), as if it had been logged on the phone: every device shows it within the
    half minute they poll the revision.
@@ -11,8 +11,10 @@ import { z } from 'zod'
 import { isoDate, entryView, withCustomsIndexed } from './tools.js'
 import { localUid, invalidate } from './state.js'
 import { apiConfig, apiFetch } from './api-client.js'
-import { buildLoggedWorkout, appendLoggedWorkout, findDuplicate, BODY_PARTS, LOG_LIMITS } from '../../frontend/src/lib/log-workout.js'
+import { buildLoggedWorkout, appendLoggedWorkout, findDuplicate, resolveExercise, BODY_PARTS, LOG_LIMITS } from '../../frontend/src/lib/log-workout.js'
+import { editCompletedSession, saveWorkoutEdit, deleteEditedWorkout } from '../../frontend/src/lib/session-edit.js'
 import { friendlyDuration } from './labels.js'
+import { modeOf } from '../../frontend/src/lib/history.js'
 
 const localIso = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0')
 const hhmm = t => { const d = new Date(t); return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0') }
@@ -89,6 +91,64 @@ function viewOf(w, S, resolved) {
   }
 }
 
+/**
+ * One change to the profile, saved the way a device saves it: GET /api/data, `change` edits a copy,
+ * PUT it with the revision it was read at, and on a 409 run `change` again on the document the
+ * server sent back, so another device's write in between is kept. Every write tool goes through
+ * here; none writes the state file.
+ *
+ * `change(S)` edits S in place and returns { result, trail } (trail: the operator's stderr line),
+ * or { save: false, result } to answer without writing (a dry run, a problem to put to the user).
+ * Resolves `result` plus the revision it landed at, or the no-save result as it is.
+ */
+export async function changeProfile({ tool, env = process.env, fetchImpl, now = Date.now(), dryRun = false }, change) {
+  const cfg = apiConfig(env)
+  const opts = fetchImpl ? { fetchImpl } : {}
+  saves = saves.filter(t => now - t < WINDOW_MS)
+  if (!dryRun && saves.length >= WRITE_LIMIT) {
+    throw fail('ERATE', `the openGym tools already saved ${WRITE_LIMIT} changes in the last hour, the most they take in one go; nothing was saved. Wait a bit, or make the rest in the app.`)
+  }
+
+  const me = await apiFetch(cfg, '/api/me', opts)
+  const uid = me.body?.user?.id
+  // A guard that cannot read whose token this is refuses rather than steps aside.
+  if (typeof uid !== 'string' || !uid) throw fail('EAPI', 'the openGym server did not say which profile OPENGYM_TOKEN belongs to (GET /api/me); nothing was saved')
+  const local = localUid()
+  if (local && local !== uid) {
+    // The ids go to the operator on stderr, not into the model's context (state.js ambiguousUid).
+    console.error(`[opengym-mcp] OPENGYM_TOKEN is for profile ${uid}, this server reads ${local}`)
+    throw fail('EPROFILE', 'OPENGYM_TOKEN belongs to another profile than the one this server reads: pair again from the right profile, or set OPENGYM_UID to match (the ids are on the server\'s stderr)')
+  }
+
+  let got = await apiFetch(cfg, '/api/data', opts)
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    const doc = got.body?.state
+    if (!doc || typeof doc !== 'object') {
+      throw fail('ENOSTATE', 'this profile has no synced data on the server yet: open openGym and sign in on a device once, then try again')
+    }
+    // The document exactly as the server sent it, plus the change: anything else in the PUT (a
+    // default filled in here) would be stamped as an edit made now and land on every device.
+    const S = structuredClone(doc)
+    const out = change(S)
+    if (out.save === false) return out.result
+    const put = await apiFetch(cfg, '/api/data', { ...opts, method: 'PUT', body: { state: S, baseRev: got.body.rev ?? 0, ...(typeof doc._wid === 'string' ? { baseWid: doc._wid } : {}) } })
+    if (put.status !== 409) {
+      invalidate()
+      saves.push(now)
+      // The operator's trail: what changed and at which revision. Never the token, and nothing
+      // the model sees.
+      console.error(`[opengym-mcp] ${tool} ${out.trail}, rev ${put.body?.rev ?? '?'}`)
+      return { ...out.result, revision: put.body?.rev ?? null }
+    }
+    // A 409 without the current document (a proxy's page) is not something to build on.
+    if (!put.body?.state || typeof put.body.state !== 'object' || typeof put.body.rev !== 'number') {
+      throw fail('EAPI', 'the openGym server answered 409 without the current profile; nothing was saved')
+    }
+    got = { status: 200, body: { state: put.body.state, rev: put.body.rev } }
+  }
+  throw fail('ECONFLICT', `the profile kept changing on the server (${MAX_ATTEMPTS} attempts); nothing was saved, try again in a moment`)
+}
+
 const setSchema = z.object({
   reps: z.number().int().min(1).max(LOG_LIMITS.maxReps).optional().describe('Reps done. Give reps for a rep exercise, or seconds for a hold, never both in one exercise.'),
   seconds: z.number().min(1).max(LOG_LIMITS.maxSec).optional().describe('Seconds held, for a timed exercise (plank, hang, wall sit).'),
@@ -128,78 +188,198 @@ export const logWorkout = {
     allow_duplicate: z.boolean().optional().describe('Log it even though the same sets are already logged that day (a genuine second session). Give it a different start or name too.'),
   },
   handler: async (params, { env = process.env, fetchImpl } = {}) => {
-    const cfg = apiConfig(env)
-    const opts = fetchImpl ? { fetchImpl } : {}
     // One clock for every attempt: a retry after a conflict files the same workout, not a later one.
     const now = Date.now()
-    saves = saves.filter(t => now - t < WINDOW_MS)
-    if (!params.dry_run && saves.length >= WRITE_LIMIT) {
-      throw fail('ERATE', `log_workout already saved ${WRITE_LIMIT} workouts in the last hour, the most it takes in one go; nothing was saved. Wait a bit, or log the rest in the app.`)
-    }
     const input = inputOf({ ...params, date: params.date || localIso(new Date(now)) })
-
-    const me = await apiFetch(cfg, '/api/me', opts)
-    const uid = me.body?.user?.id
-    // A guard that cannot read whose token this is refuses rather than steps aside.
-    if (typeof uid !== 'string' || !uid) throw fail('EAPI', 'the openGym server did not say which profile OPENGYM_TOKEN belongs to (GET /api/me); nothing was saved')
-    const local = localUid()
-    if (local && local !== uid) {
-      // The ids go to the operator on stderr, not into the model's context (state.js ambiguousUid).
-      console.error(`[opengym-mcp] OPENGYM_TOKEN is for profile ${uid}, this server reads ${local}`)
-      throw fail('EPROFILE', 'OPENGYM_TOKEN belongs to another profile than the one this server reads: pair again from the right profile, or set OPENGYM_UID to match (the ids are on the server\'s stderr)')
-    }
-
-    let got = await apiFetch(cfg, '/api/data', opts)
     // A description without a unit is in the profile's, as the profile was when first read: a
-    // retry after another device switched kg ↔ lb reads the same numbers the same way.
+    // retry after another device switched kg <-> lb reads the same numbers the same way.
     let unit = null, meanings = null
-    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-      const doc = got.body?.state
-      if (!doc || typeof doc !== 'object') {
-        throw fail('ENOSTATE', 'this profile has no synced data on the server yet: open openGym and sign in on a device once, then try again')
-      }
-      // The document exactly as the server sent it, plus the workout: anything else in the PUT —
-      // a default filled in here — would be stamped as an edit made now and land on every device.
-      const S = structuredClone(doc)
+    return changeProfile({ tool: 'log_workout', env, fetchImpl, now, dryRun: !!params.dry_run }, S => {
       unit = unit || (S.unit === 'lb' ? 'lb' : 'kg')
       // The profile's own exercises indexed for the build, as the app has them: a custom one-arm
       // dumbbell press counts one bell, a custom assisted machine folds towards less help.
       const built = withCustomsIndexed(S, () => buildLoggedWorkout(S, input, { now, unit, meanings }))
       if (built.problems) {
-        return { logged: false, problems: built.problems, next: 'Nothing was saved. Settle these with the user (pick a candidate id, fix a set) and call again.' }
+        return { save: false, result: { logged: false, problems: built.problems, next: 'Nothing was saved. Settle these with the user (pick a candidate id, fix a set) and call again.' } }
       }
       // What each dumbbell weight meant on the first read stays what it means on a retry.
       meanings = meanings || Object.fromEntries(built.workout.entries.map(e => [e.id, e.target?.dbLoad || 'as']))
-      const preview = viewOf(built.workout, S, built)
       if (params.dry_run) {
         const dup = findDuplicate(S, built.workout)
-        return { logged: false, dry_run: true, would_log: preview, ...(dup && (dup.sameRequest || !params.allow_duplicate) ? { duplicate_of: dup.workout.id } : {}) }
+        return { save: false, result: { logged: false, dry_run: true, would_log: viewOf(built.workout, S, built), ...(dup && (dup.sameRequest || !params.allow_duplicate) ? { duplicate_of: dup.workout.id } : {}) } }
       }
       const added = withCustomsIndexed({ customEx: [...(S.customEx || []), ...built.customEx] }, () =>
         appendLoggedWorkout(S, built, { now, allowDuplicate: params.allow_duplicate === true }))
       if (!added.added) {
-        return { logged: false, duplicate: true, workout_id: added.workout.id, date: added.workout.d, message: 'This session is already in the history; nothing was added. If it really was a second session, call again with allow_duplicate: true and a different start or name.' }
+        return { save: false, result: { logged: false, duplicate: true, workout_id: added.workout.id, date: added.workout.d, message: 'This session is already in the history; nothing was added. If it really was a second session, call again with allow_duplicate: true and a different start or name.' } }
       }
-      const put = await apiFetch(cfg, '/api/data', { ...opts, method: 'PUT', body: { state: S, baseRev: got.body.rev ?? 0, ...(typeof doc._wid === 'string' ? { baseWid: doc._wid } : {}) } })
-      if (put.status !== 409) {
-        invalidate()
-        saves.push(now)
-        // The operator's trail (stderr, as the profile guard's): which workout went in, for what
-        // day and at which revision. Never the token, and nothing the model sees.
-        const sets = added.workout.entries.reduce((n, e) => n + e.sets.length, 0)
-        console.error(`[opengym-mcp] log_workout saved ${added.workout.id} for ${added.workout.d} (${added.workout.entries.length} exercises, ${sets} sets), rev ${put.body?.rev ?? '?'}`)
-        return { logged: true, ...viewOf(added.workout, S, built), revision: put.body?.rev ?? null }
+      const sets = added.workout.entries.reduce((n, e) => n + e.sets.length, 0)
+      return {
+        result: { logged: true, ...viewOf(added.workout, S, built) },
+        trail: `saved ${added.workout.id} for ${added.workout.d} (${added.workout.entries.length} exercises, ${sets} sets)`,
       }
-      // Another device wrote in between: the server sent its current document back with the 409,
-      // so the workout is built again on top of that one. A 409 without one (a proxy's page) is
-      // not something to build on.
-      if (!put.body?.state || typeof put.body.state !== 'object' || typeof put.body.rev !== 'number') {
-        throw fail('EAPI', 'the openGym server answered 409 without the current profile; nothing was saved')
-      }
-      got = { status: 200, body: { state: put.body.state, rev: put.body.rev } }
-    }
-    throw fail('ECONFLICT', `the profile kept changing on the server (${MAX_ATTEMPTS} attempts); nothing was saved, try again in a moment`)
+    })
   },
 }
 
-export const WRITE_TOOLS = [logWorkout]
+// The app's own editor run on the profile (frontend/src/lib/session-edit.js), so a correction
+// lands as an edit made in History does: the volume, the PR badges of the sessions around it and a
+// kept working weight that came from it are worked out again, and the record is stamped so the
+// sync keeps the newest edit. editCompletedSession opens a copy as S.active, and S.active is also
+// where a phone keeps a session it is running: that one is set aside meanwhile and put back.
+function inEditor(S, workoutId, fn) {
+  const had = Object.hasOwn(S, 'active'), running = S.active
+  S.active = null
+  try {
+    try { editCompletedSession(S, workoutId) } catch { throw fail('ENOENT', `no workout with id ${workoutId} (list_workouts gives the ids)`) }
+    return fn(S.active)
+  } finally {
+    if (had) S.active = running
+    else delete S.active
+  }
+}
+
+const editSchema = z.object({
+  exercise: z.number().int().min(1).describe('Which exercise: its position in get_workout\'s `entries`, from 1.'),
+  set: z.number().int().min(1).describe('Which set of that exercise, from 1, as get_workout lists them.'),
+  remove: z.boolean().optional().describe('Take this set out. Nothing else may be given with it.'),
+  weight: z.number().min(0).max(LOG_LIMITS.maxKg).optional().describe('The load, in the profile\'s unit (get_workout\'s `unit`), as get_workout shows it (`w`).'),
+  reps: z.number().int().min(1).max(LOG_LIMITS.maxReps).optional(),
+  seconds: z.number().min(1).max(LOG_LIMITS.maxSec).optional().describe('For a timed set only.'),
+  warmup: z.boolean().optional(),
+  failure: z.boolean().optional(),
+})
+
+// One set as get_workout reads it back, with the numbers spelled out.
+const setView = row => ({
+  weight: Number(row.w) || 0,
+  ...(row.sec != null ? { seconds: row.sec } : { reps: Number(row.r) || 0 }),
+  ...(row.phase === 'warmup' ? { warmup: true } : {}),
+  ...(row.failure ? { failure: true } : {}),
+})
+
+// Applies the edits to the editor's copy; a string is the problem to put to the user.
+function applyEdits(active, edits) {
+  const entries = active.entries || []
+  for (const ed of edits) {
+    const entry = entries[ed.exercise - 1]
+    if (!entry) return `exercise ${ed.exercise}: the workout has ${entries.length}`
+    const row = (entry.sets || [])[ed.set - 1]
+    if (!row) return `exercise ${ed.exercise}, set ${ed.set}: that exercise has ${(entry.sets || []).length} sets`
+    if (row.sides) return `exercise ${ed.exercise}, set ${ed.set}: a set logged per side is edited in the app`
+    if (ed.remove) {
+      if (Object.keys(ed).some(k => !['exercise', 'set', 'remove'].includes(k))) return `exercise ${ed.exercise}, set ${ed.set}: remove takes nothing else`
+      continue
+    }
+    if (ed.weight != null) row.w = ed.weight
+    if (ed.reps != null) { if (row.sec != null) return `exercise ${ed.exercise}, set ${ed.set}: a timed set takes seconds, not reps`; row.r = ed.reps }
+    if (ed.seconds != null) { if (row.sec == null) return `exercise ${ed.exercise}, set ${ed.set}: a rep set takes reps, not seconds`; row.sec = ed.seconds }
+    if (ed.warmup === true) row.phase = 'warmup'
+    if (ed.warmup === false && row.phase === 'warmup') delete row.phase
+    if (ed.failure != null) { if (ed.failure) row.failure = true; else delete row.failure }
+    if (row.phase === 'warmup' && row.failure) return `exercise ${ed.exercise}, set ${ed.set}: a warm-up set is not taken to failure`
+  }
+  // Removals last, by position as given, so the numbers in one call all mean the sets as listed.
+  const gone = new Set(edits.filter(e => e.remove).map(e => `${e.exercise}:${e.set}`))
+  entries.forEach((entry, i) => { entry.sets = (entry.sets || []).filter((_, j) => !gone.has(`${i + 1}:${j + 1}`)) })
+  return null
+}
+
+export const updateWorkout = {
+  name: 'update_workout',
+  description: [
+    'Correct a workout already in the user\'s history: change a set\'s weight, reps or seconds, mark it warm-up or to failure, take sets out, or change the session note.',
+    'Call get_workout first: exercises and sets are numbered as it lists them, from 1, and weights are in its `unit`.',
+    'Volume, PR badges and the next suggested weight are worked out again, as an edit in the app does. Taking out every set is not an edit: use delete_workout.',
+    'Call with dry_run: true first, show the user the result, and save once they agree.',
+  ].join(' '),
+  schema: {
+    workout_id: z.string().min(1).describe('The id from list_workouts or get_workout.'),
+    sets: z.array(editSchema).max(LOG_LIMITS.maxSets).optional(),
+    note: z.string().max(500).optional().describe('The session note; an empty string clears it.'),
+    dry_run: z.boolean().optional().describe('Work out the result and return it without saving.'),
+  },
+  handler: async (params, { env = process.env, fetchImpl } = {}) => {
+    if (!params.sets?.length && params.note === undefined) throw fail('EINVAL', 'nothing to change: give sets, a note, or both')
+    return changeProfile({ tool: 'update_workout', env, fetchImpl, dryRun: !!params.dry_run }, S => {
+      let problem = null, saved = null
+      inEditor(S, params.workout_id, active => {
+        problem = applyEdits(active, params.sets || [])
+        if (problem) return
+        if (params.note !== undefined) active.note = params.note
+        if (!active.entries.some(e => e.sets.length)) { problem = 'that takes out every set: delete the workout instead (delete_workout)'; return }
+        saved = saveWorkoutEdit(S)
+      })
+      if (problem) return { save: false, result: { updated: false, problem, next: 'Nothing was saved. Check get_workout and call again.' } }
+      const view = { workout_id: saved.id, date: saved.d, volume: saved.vol, ...(saved.note ? { note: saved.note } : {}), exercises: saved.entries.map(e => ({ id: e.id, sets: e.sets.map(setView) })) }
+      if (params.dry_run) return { save: false, result: { updated: false, dry_run: true, would_save: view } }
+      return { result: { updated: true, ...view }, trail: `updated ${saved.id} of ${saved.d}` }
+    })
+  },
+}
+
+export const deleteWorkout = {
+  name: 'delete_workout',
+  description: 'Delete a workout from the user\'s history, on every device, as History\'s Delete does (a duplicate, a session logged by mistake). It cannot be undone from here: confirm with the user which one first, naming its date and exercises from get_workout.',
+  schema: {
+    workout_id: z.string().min(1).describe('The id from list_workouts or get_workout.'),
+  },
+  handler: async (params, { env = process.env, fetchImpl } = {}) => {
+    return changeProfile({ tool: 'delete_workout', env, fetchImpl }, S => {
+      let gone = null
+      inEditor(S, params.workout_id, active => {
+        gone = { id: active.editingWorkoutId, d: active.d }
+        deleteEditedWorkout(S)
+      })
+      return { result: { deleted: true, workout_id: gone.id, date: gone.d }, trail: `deleted ${gone.id} of ${gone.d}` }
+    })
+  },
+}
+
+export const swapExercise = {
+  name: 'swap_exercise',
+  description: [
+    'Change which exercise one entry of a logged workout was, keeping its sets: "that was the dumbbell shoulder press, not the barbell one".',
+    'Call get_workout first: `exercise` is the entry\'s position in its `entries`, from 1. `to` is a name or an exercise id, matched as log_workout matches them; several or no matches come back as candidates to put to the user.',
+    'PR badges and next weights are worked out again for both exercises. A timed exercise only swaps with another timed one, a rep exercise with a rep one.',
+    'Call with dry_run: true first when the match is not exactly what the user said.',
+  ].join(' '),
+  schema: {
+    workout_id: z.string().min(1).describe('The id from list_workouts or get_workout.'),
+    exercise: z.number().int().min(1).describe('Which entry: its position in get_workout\'s `entries`, from 1.'),
+    to: z.string().min(1).max(120).describe('The exercise it really was: a name, or an exercise id from an earlier answer.'),
+    dry_run: z.boolean().optional().describe('Show the match and the result without saving.'),
+  },
+  handler: async (params, { env = process.env, fetchImpl } = {}) => {
+    return changeProfile({ tool: 'swap_exercise', env, fetchImpl, dryRun: !!params.dry_run }, S => {
+      let problem = null, saved = null, from = null, to = null
+      withCustomsIndexed(S, () => inEditor(S, params.workout_id, active => {
+        const entry = (active.entries || [])[params.exercise - 1]
+        if (!entry) { problem = { problem: `exercise ${params.exercise}: the workout has ${(active.entries || []).length}` }; return }
+        const match = resolveExercise(S, params.to)
+        if (match.problem) { problem = match; return }
+        from = { id: entry.id, name: entryView(entry, S).name }
+        to = { id: match.id, name: match.name }
+        if (match.id === entry.id) { problem = { problem: `exercise ${params.exercise} already is ${match.name}` }; return }
+        // Reps or seconds is the entry's own setting (its target), and stays with it. Cardio
+        // (time and speed) is the exercise's, and its sets mean something else entirely.
+        const wasCardio = modeOf({ ...(entry.target || {}), id: entry.id }) === 'cardio'
+        if (wasCardio !== (modeOf({ id: match.id }) === 'cardio')) {
+          problem = { problem: `${from.name} and ${match.name} are not logged the same way (one is cardio): fix it in the app instead` }
+          return
+        }
+        entry.id = match.id
+        // What belonged to the old exercise: the muscles it worked and what its routine planned.
+        delete entry.muscleSnapshot
+        delete entry.planned
+        saved = saveWorkoutEdit(S)
+      }))
+      if (problem) return { save: false, result: { swapped: false, ...problem, next: 'Nothing was saved. Settle this with the user and call again.' } }
+      const view = { workout_id: saved.id, date: saved.d, exercise: params.exercise, from, to, sets: saved.entries[params.exercise - 1]?.sets.map(setView) }
+      if (params.dry_run) return { save: false, result: { swapped: false, dry_run: true, would_save: view } }
+      return { result: { swapped: true, ...view }, trail: `swapped exercise ${params.exercise} of ${saved.id} to ${to.id}` }
+    })
+  },
+}
+
+export const WRITE_TOOLS = [logWorkout, updateWorkout, deleteWorkout, swapExercise]

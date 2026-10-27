@@ -144,9 +144,11 @@ together: `lib/sync-merge.js` and `api/sync-stamps.js` (parity test), `lib/glyph
 Stdio MCP bridge (`@modelcontextprotocol/sdk`) that reads one user's data straight from
 `DATA_DIR`, or, paired and without `OPENGYM_DATA`, through `GET /api/data` (revision-checked).
 `state.js` loads and derives the data, `tools.js` defines the read tools (zod schemas),
-`labels.js` maps keys to readable labels, `index.js` wires it together. The one write tool,
-`log_workout` (`write-tools.js`), never writes the file: it builds the workout with
-`frontend/src/lib/log-workout.js` and saves it with `PUT /api/data` over a paired-session token
+`labels.js` maps keys to readable labels, `index.js` wires it together. The write tools
+(`write-tools.js`: `log_workout`, `update_workout`, `swap_exercise`, `delete_workout`) never
+write the file: each changes a copy with the app's own helpers (`lib/log-workout.js`,
+`lib/session-edit.js`) and saves it through `changeProfile`, the read, `PUT /api/data` and
+409-retry loop they share, over a paired-session token
 (`api-client.js`, `scripts/pair.mjs`), the way a device syncs. See `mcp/README.md`.
 
 ### Passkeys and self-hosting constraints
