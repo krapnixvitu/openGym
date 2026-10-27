@@ -14,7 +14,6 @@ import { BODY_TOOLS } from './body-tools.js'
 import { SCHEDULE_TOOLS } from './schedule-tools.js'
 import { ROUTINE_TOOLS } from './routine-tools.js'
 import { PROGRESSION_TOOLS } from './progression-tools.js'
-import { init, getUser } from './state.js'
 
 const server = new McpServer({
   name: 'opengym',
