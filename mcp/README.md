@@ -81,6 +81,11 @@ The read-only tools, and the ones that write:
 | `get_bodyweight` | Weigh-ins with the latest weight, the goal line, and deltas vs goal. |
 | `estimate_1rm` | All-time best 1RM for an exercise + the trend, or a PR table across all exercises. |
 | `muscle_balance` | Which muscles I've trained this week/month/all-time, ranked + which I've neglected. |
+| `exercise_history` | One exercise's past, as its history sheet shows it: the best ever, each session's sets with its best, estimated 1RM and volume, the PRs and the trend. |
+| `training_report` | The app's training report for the last 7 days, 4 weeks, 3 months or any dates: totals against the stretch before, per-week numbers, muscles worked, the main lifts, PRs, body weight change and streaks. |
+| `recovery` | Which muscles are ready, recovering or fatigued now, the hours until each is ready, and how much strength each has kept. |
+| `strength_balance` | Structural Balance: each lift as a percentage of its anchor lift against the template's target, and whether it is balanced, weak or strong. |
+| `plate_math` | Which plates to load for a weight, from your own bar and plates, and what is missing when they cannot make it exactly. |
 | `log_workout` | *Writes.* "I did dumbbell curls, 12 kg, 12/12/10" → a logged session in your history, on every device. Needs pairing: [Logging workouts](#logging-workouts). |
 | `update_workout` | *Writes.* "Set 2 of Monday's curls was 14 kg, not 12" → that set corrected, as an edit in History makes it (volume, PR badges and the next weight worked out again). Sets, reps, seconds, warm-up/failure marks, removed sets, the session note. |
 | `swap_exercise` | *Writes.* "That was the dumbbell press, not the barbell one" → the entry becomes the right exercise with its sets kept; badges and next weights follow for both. |

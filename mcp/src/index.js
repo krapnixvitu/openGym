@@ -8,6 +8,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { TOOLS } from './tools.js'
 import { WRITE_TOOLS } from './write-tools.js'
+import { REPORT_TOOLS } from './report-tools.js'
 import { init, getUser, apiMode, refresh } from './state.js'
 import { INSTRUCTIONS } from './instructions.js'
 import { BODY_TOOLS } from './body-tools.js'
@@ -40,7 +41,7 @@ try {
 }
 
 const READS = new Set(TOOLS)
-for (const t of [...TOOLS, ...WRITE_TOOLS, ...BODY_TOOLS, ...SCHEDULE_TOOLS, ...ROUTINE_TOOLS, ...PROGRESSION_TOOLS, ...ROTATION_TOOLS, ...EQUIPMENT_TOOLS, ...EXERCISE_TOOLS, ...MEASUREMENT_TOOLS, ...SETTINGS_TOOLS]) {
+for (const t of [...TOOLS, ...WRITE_TOOLS, ...BODY_TOOLS, ...SCHEDULE_TOOLS, ...ROUTINE_TOOLS, ...PROGRESSION_TOOLS, ...ROTATION_TOOLS, ...EQUIPMENT_TOOLS, ...EXERCISE_TOOLS, ...MEASUREMENT_TOOLS, ...SETTINGS_TOOLS, ...REPORT_TOOLS]) {
   server.tool(
     t.name,
     t.description,

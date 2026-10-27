@@ -143,8 +143,9 @@ together: `lib/sync-merge.js` and `api/sync-stamps.js` (parity test), `lib/glyph
 
 Stdio MCP bridge (`@modelcontextprotocol/sdk`) that reads one user's data straight from
 `DATA_DIR`, or, paired and without `OPENGYM_DATA`, through `GET /api/data` (revision-checked).
-`state.js` loads and derives the data, `tools.js` defines the read tools (zod schemas),
-`labels.js` maps keys to readable labels, `instructions.js` is the map of openGym sent at
+`state.js` loads and derives the data, `tools.js` defines the read tools (zod schemas) and
+`report-tools.js` the reads behind the app's own screens (exercise history, training report,
+recovery, Structural Balance, plate math), `labels.js` maps keys to readable labels, `instructions.js` is the map of openGym sent at
 connection, `index.js` wires it together. The write tools never write the file: each changes a
 copy with the app's own helpers (`lib/log-workout.js`, `lib/session-edit.js`,
 `lib/workout-date.js`, `lib/session-noprog.js`, ...) and saves it through `changeProfile`
