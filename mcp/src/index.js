@@ -8,6 +8,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { TOOLS } from './tools.js'
 import { WRITE_TOOLS } from './write-tools.js'
+import { REPORT_TOOLS } from './report-tools.js'
 import { init, getUser, apiMode, refresh } from './state.js'
 
 const server = new McpServer({
@@ -30,7 +31,7 @@ try {
 }
 
 const READS = new Set(TOOLS)
-for (const t of [...TOOLS, ...WRITE_TOOLS]) {
+for (const t of [...TOOLS, ...REPORT_TOOLS, ...WRITE_TOOLS]) {
   server.tool(
     t.name,
     t.description,
@@ -39,7 +40,7 @@ for (const t of [...TOOLS, ...WRITE_TOOLS]) {
       try {
         // Through the api, a read tool first checks the revision and downloads the profile only
         // when it moved; reading the data folder this does nothing.
-        if (READS.has(t)) await refresh()
+        if (READS.has(t) || t.read) await refresh()
         // log_workout talks to the server, so a handler may answer with a promise.
         const result = await t.handler(params || {})
         return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] }
