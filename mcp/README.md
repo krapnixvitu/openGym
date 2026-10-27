@@ -118,6 +118,8 @@ The read-only tools, and the ones that write:
 | `add_measurements` | *Writes.* A day's measurements (circumferences, body fat, my own fields), added to that day's check-in. |
 | `delete_measurements` | *Writes.* A day's check-in deleted. |
 | `add_measurement_field` | *Writes.* A measurement of my own to track, in cm, in, %, kg, lb or no unit. |
+| `get_settings` | My training settings (rest timer, effort scale, week start, how sessions are planned and laid out) and what each means. |
+| `update_settings` | *Writes.* Those settings changed. Not the unit (switching converts every weight), reminders or sign-in: those stay in the app. |
 
 `get_routine` and `preview_session` answer two different questions, and confusing them is the
 easiest way for a coach to give wrong advice. `get_routine` reports what the routine *stores*.
