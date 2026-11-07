@@ -207,7 +207,7 @@ describe('add_to_workout', () => {
   test('an ambiguous name comes back as a problem with candidates, nothing saved', async () => {
     const id = await withLogged()
     const puts = api.puts.length
-    const out = await addToWorkout.handler({ workout_id: id, add: [{ name: 'hammer curl', sets: [{ reps: 10 }] }] }, { env: api.env })
+    const out = await addToWorkout.handler({ workout_id: id, add: [{ name: 'curl', sets: [{ reps: 10 }] }] }, { env: api.env })
     expect(out.updated).toBe(false)
     expect(JSON.stringify(out.problems)).toContain('candidates')
     expect(api.puts.length).toBe(puts)
