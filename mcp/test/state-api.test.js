@@ -48,6 +48,13 @@ describe('reading through the api', () => {
     expect(st.localUid()).toBeNull()
   })
 
+  test('an exercise merged into another reads as its target, as from the data folder (#656)', async () => {
+    api = await stubApi({ ...DOC(), routines: [{ id: 'r1', name: 'Push', ex: [{ id: 'cfn', sets: 3 }] }], exMerged: { cfn: { into: '0025', _ts: 5 } } })
+    const st = await load()
+    await st.refresh()
+    expect(st.getState().routines[0].ex[0].id).toBe('0025')
+  })
+
   test('an unchanged revision is one cheap call, not another download', async () => {
     api = await stubApi(DOC())
     const st = await load()
