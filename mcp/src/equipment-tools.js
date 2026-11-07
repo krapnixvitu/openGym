@@ -1,16 +1,26 @@
 /* Equipment profiles: "Home", "Gym", each a checklist of what is there, and which one is in use,
    made and switched the way Settings > Equipment and its profile sheet do (lib/equipment.js).
    With a profile in use and the filter on, the library and the picker show only what it has, and
-   a routine's exercises that need something else are flagged. */
+   a routine's exercises that need something else are flagged. Each profile is also a gym with its
+   own plates, dumbbells, bars and stacks (#808, lib/gym-inventory.js): switching is switchGym, and
+   every change is settled with syncGymInventory, as the app's store settles each of its own. */
 import { z } from 'zod'
 import { getState } from './state.js'
 import { changeProfile } from './write-tools.js'
 import { ALL_EQUIPMENT, ACC_V, profileEquipment, newProfile, activeProfile } from '../../frontend/src/lib/equipment.js'
 import { ownsNoDumbbells } from '../../frontend/src/lib/dumbbells.js'
+import { switchGym, syncGymInventory } from '../../frontend/src/lib/gym-inventory.js'
 
 const nothing = text => ({ save: false, result: { updated: false, problem: text, next: 'Nothing was saved.' } })
 const profilesOf = S => (Array.isArray(S.equipProfiles) ? S.equipProfiles : []).filter(p => p && p.id)
 const inUse = S => activeProfile(S)?.id || null
+// A change made as the app's store makes one: the gyms' inventories settled against the state before it.
+const asStore = fn => S => {
+  const prev = JSON.parse(JSON.stringify(S))
+  const out = fn(S)
+  if (out?.save !== false) syncGymInventory(S, prev)
+  return out
+}
 const view = (S, p) => ({ id: p.id, name: p.name, equipment: profileEquipment(p), in_use: inUse(S) === p.id })
 
 export const listEquipmentProfiles = {
@@ -52,7 +62,7 @@ export const saveEquipmentProfile = {
     if (!id && !name) return { updated: false, problem: 'a new profile needs a name' }
     if (equipment && (add.length || remove.length)) return { updated: false, problem: 'give the whole list (equipment) or the changes (add, remove), not both' }
     let made = null
-    return changeProfile({ tool: 'save_equipment_profile', env, fetchImpl }, S => {
+    return changeProfile({ tool: 'save_equipment_profile', env, fetchImpl }, asStore(S => {
       S.equipProfiles = Array.isArray(S.equipProfiles) ? S.equipProfiles : []
       let p = id ? S.equipProfiles.find(x => x?.id === id) : null
       if (id && !p) return nothing(`no equipment profile with id ${id} (list_equipment_profiles gives the ids)`)
@@ -73,7 +83,7 @@ export const saveEquipmentProfile = {
       p.accV = ACC_V
       if (JSON.stringify(p) === before) return { save: false, result: { updated: false, message: 'The profile already is that way; nothing changed.' } }
       return { result: { updated: true, profile: view(S, p) }, trail: `equipment profile ${p.id} saved, ${p.equipment.length} items` }
-    })
+    }))
   },
 }
 
@@ -82,39 +92,44 @@ export const deleteEquipmentProfile = {
   description: 'Delete an equipment profile, as Settings > Equipment does. If it was in use, the next profile takes its place. Confirm with the user first.',
   schema: { profile_id: z.string().min(1) },
   handler: async (params, { env = process.env, fetchImpl } = {}) => {
-    return changeProfile({ tool: 'delete_equipment_profile', env, fetchImpl }, S => {
+    return changeProfile({ tool: 'delete_equipment_profile', env, fetchImpl }, asStore(S => {
       const p = profilesOf(S).find(x => x.id === params.profile_id)
       if (!p) return nothing(`no equipment profile with id ${params.profile_id} (list_equipment_profiles gives the ids)`)
+      // As Settings deletes one: the next gym takes over with its own lists.
+      const rest = S.equipProfiles.filter(x => x?.id !== p.id)
+      if (S.activeEquipId === p.id && rest[0]) switchGym(S, rest[0].id)
       S.equipProfiles = S.equipProfiles.filter(x => x?.id !== p.id)
-      if (S.activeEquipId === p.id) S.activeEquipId = (S.equipProfiles[0] && S.equipProfiles[0].id) || null
+      if (S.activeEquipId === p.id) S.activeEquipId = null
+      if (S.invGym === p.id) delete S.invGym
       const now = activeProfile(S)
       return { result: { deleted: true, profile: p.name, in_use: now ? now.name : 'everything (no filter)' }, trail: `equipment profile ${p.id} deleted` }
-    })
+    }))
   },
 }
 
 export const setActiveEquipment = {
   name: 'set_active_equipment',
   description: [
-    'Choose where the person trains now ("only dumbbells at home today"): the equipment profile in use, with the filter on, as Settings > Equipment does. Then the app shows only exercises that profile has.',
+    'Choose where the person trains now ("only dumbbells at home today"): the equipment profile in use, with the filter on, as Settings > Equipment does. Then the app shows only exercises that profile has, and loads plates, dumbbells and bars from that gym\'s own lists.',
     'profile_id null turns the filter off, so everything shows again. Check routines against it with get_routine and the exercises\' equipment.',
   ].join(' '),
   schema: { profile_id: z.string().min(1).nullable() },
   handler: async (params, { env = process.env, fetchImpl } = {}) => {
-    return changeProfile({ tool: 'set_active_equipment', env, fetchImpl }, S => {
+    return changeProfile({ tool: 'set_active_equipment', env, fetchImpl }, asStore(S => {
       const id = params.profile_id
       const before = JSON.stringify([S.activeEquipId ?? null, !!S.equipFilterOn])
       if (id == null) S.equipFilterOn = false
       else {
         const p = profilesOf(S).find(x => x.id === id)
         if (!p) return nothing(`no equipment profile with id ${id} (list_equipment_profiles gives the ids)`)
-        S.activeEquipId = p.id
+        // Its plates, dumbbells, bars and stacks come with it.
+        switchGym(S, p.id)
         S.equipFilterOn = true
       }
       if (JSON.stringify([S.activeEquipId ?? null, !!S.equipFilterOn]) === before) return { save: false, result: { updated: false, message: 'That already is the profile in use; nothing changed.' } }
       const now = activeProfile(S)
       return { result: { updated: true, in_use: now ? view(S, now) : 'everything (no filter)' }, trail: `equipment in use: ${id ?? 'none'}` }
-    })
+    }))
   },
 }
 

@@ -127,6 +127,7 @@ The read-only tools, and the ones that write:
 | `add_measurement_field` | *Writes.* A measurement of my own to track, in cm, in, %, kg, lb or no unit. |
 | `get_settings` | My training settings (rest timer, effort scale, week start, how sessions are planned and laid out) and what each means. |
 | `update_settings` | *Writes.* Those settings changed. Not the unit (switching converts every weight), reminders or sign-in: those stay in the app. |
+| `set_active_equipment` | *Writes.* "Only dumbbells at home today": the profile in use, so the app shows only what it has and loads that gym's own plates, dumbbells and bars; or the filter off. |
 
 `get_routine` and `preview_session` answer two different questions, and confusing them is the
 easiest way for a coach to give wrong advice. `get_routine` reports what the routine *stores*.
