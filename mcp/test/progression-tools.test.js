@@ -51,4 +51,16 @@ describe('set_progression', () => {
     expect((await run({ routine_id: 'r1', increment: 5 })).problem).toMatch(/name it/)
     expect(api.puts).toHaveLength(0)
   })
+
+  test('the profile\'s default, as Settings > Fine-tuning sets it, and what a routine without a rule then reads', async () => {
+    api = await stubApi(DOC())
+    expect(await run({ profile_default: true, rule: 'off' })).toMatchObject({ updated: true, profile_default: 'off' })
+    expect(api.doc.progDefault).toBe('off')
+    expect(await run({ routine_id: 'r1', rule: null })).toMatchObject({ updated: false })
+    expect(await run({ routine_id: 'r1', exercise: '0025', increment: 5 })).toMatchObject({ slots: [expect.objectContaining({ rule: 'off' })] })
+    expect((await run({ profile_default: true, rule: 'time' })).problem).toMatch(/reps exercises/)
+    expect((await run({ profile_default: true, routine_id: 'r1', rule: 'linear' })).problem).toBeTruthy()
+    await run({ profile_default: true, rule: null })
+    expect(api.doc.progDefault).toBe('linear')
+  })
 })

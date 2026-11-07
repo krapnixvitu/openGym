@@ -69,6 +69,32 @@ describe('set_active_equipment and delete_equipment_profile', () => {
   })
 })
 
+describe('each profile is a gym with its own plates (#808)', () => {
+  const PL = n => ({ kg: { 20: { n, _ts: 1 } } })
+  const GYMS = () => ({ ...DOC(), equipProfiles: [{ ...structuredClone(HOME), plates: PL(1) }, { ...structuredClone(GYM), plates: PL(8) }], plates: PL(8), invGym: 'eqgym' })
+
+  test('switching brings that gym\'s plates into use, and hands the other ones back', async () => {
+    api = await stubApi(GYMS())
+    await run(setActiveEquipment, { profile_id: 'eqhome' })
+    expect(api.doc).toMatchObject({ activeEquipId: 'eqhome', invGym: 'eqhome', equipFilterOn: true })
+    expect(api.doc.plates.kg[20].n).toBe(1)
+    expect(prof('eqgym').plates.kg[20].n).toBe(8)
+  })
+
+  test('deleting the gym in use loads the next one\'s plates', async () => {
+    api = await stubApi(GYMS())
+    await run(deleteEquipmentProfile, { profile_id: 'eqgym' })
+    expect(api.doc).toMatchObject({ activeEquipId: 'eqhome', invGym: 'eqhome' })
+    expect(api.doc.plates.kg[20].n).toBe(1)
+  })
+
+  test('a new gym starts with the lists in use, as the app makes one', async () => {
+    api = await stubApi(GYMS())
+    await run(saveEquipmentProfile, { name: 'Hotel', equipment: ['dumbbell'] })
+    expect(api.doc.equipProfiles.find(p => p.name === 'Hotel').plates.kg[20].n).toBe(8)
+  })
+})
+
 describe('list_equipment_profiles', () => {
   const dirs = []
   afterAll(() => dirs.forEach(d => fs.rmSync(d, { recursive: true, force: true })))

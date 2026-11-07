@@ -25,4 +25,16 @@ describe.skipIf(!HAVE_API)('body weight against the real api', () => {
     expect(s.bodyweight.map(b => b.d)).toEqual(['2026-10-14'])
     expect(JSON.stringify(s.deleted?.bodyweight || {})).toContain('2026-10-13')
   })
+
+  test('a second weigh-in of a day, then one of two removed, as the server keeps them', async () => {
+    await addBodyweight.handler({ weight: 80.2, date: '2026-10-14', time: '21:30' }, { env: api.env })
+    let day = api.stored().bodyweight.find(b => b.d === '2026-10-14')
+    expect(day.ins.map(r => [r.at, r.w])).toEqual([['08:00', 79.4], ['21:30', 80.2]])
+    expect(day.w).toBe(79.4)
+    await deleteBodyweight.handler({ date: '2026-10-14', time: '08:00' }, { env: api.env })
+    day = api.stored().bodyweight.find(b => b.d === '2026-10-14')
+    expect(day.ins.map(r => r.at)).toEqual(['21:30'])
+    expect(day.w).toBe(80.2)
+    expect(Object.keys(day.gone)).toHaveLength(1)
+  })
 })

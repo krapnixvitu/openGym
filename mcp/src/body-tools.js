@@ -1,6 +1,7 @@
 /* Body weight: weigh-ins, the goal weight and the weekly-rate range, written the way the app's
    weigh-in, goal and rate sheets write them (sheets.jsx BwSheet and GoalSheet,
-   components/WeightRate.jsx), through changeProfile like every write tool. Weights are kept in the
+   components/WeightRate.jsx), through changeProfile like every write tool. A day can hold several
+   weigh-ins, each with its time (#859): they are added and removed with lib/weigh-ins.js. Weights are kept in the
    profile's unit to a tenth (lib/units.js convertBodyWeight); the server stamps the changes for
    the sync, as it does for any api client. */
 import { z } from 'zod'
@@ -8,6 +9,7 @@ import { isoDate } from './tools.js'
 import { changeProfile, fail, localIso } from './write-tools.js'
 import { convertBodyWeight } from '../../frontend/src/lib/units.js'
 import { rateCorridor } from '../../frontend/src/lib/bodyweight.js'
+import { addWeighIn, removeWeighIn, readingsOf, defaultTimeFor, timeOf } from '../../frontend/src/lib/weigh-ins.js'
 
 // Past any person, as the app refuses it (sheets.jsx bwMax): 9999 typed is a slip, not a weight.
 const BW_MAX = { kg: 700, lb: 1500 }
@@ -16,17 +18,21 @@ const unitOf = S => (S.unit === 'lb' ? 'lb' : 'kg')
 const inProfile = (value, given, S) => Math.round(Number(convertBodyWeight(value, given || unitOf(S), unitOf(S))) * 10) / 10
 const tooHeavy = (n, S) => n > BW_MAX[unitOf(S)] ? `that is more than ${BW_MAX[unitOf(S)]} ${unitOf(S)}, which no weigh-in is` : null
 
+// A time of day as the weigh-in sheet takes it.
+const hhmm = () => z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'HH:MM, 24-hour')
+const readingList = (S, day) => readingsOf(day).map(r => ({ time: r.at || null, weight: r.w, unit: unitOf(S) }))
+
 export const addBodyweight = {
   name: 'add_bodyweight',
   description: [
-    'Log a weigh-in, as the app\'s weigh-in sheet does: one per day, today by default.',
-    'A second weigh-in today replaces the first (a correction). An earlier day that already has one is only replaced with replace: true, after the user confirms.',
+    'Log a weigh-in, as the app\'s weigh-in sheet does: today at the current time by default, or another day and time.',
+    'A day can hold several weigh-ins; the day\'s weight is the one the profile\'s daily-value setting picks (morning, average or last). A weigh-in at the same time on the same day corrects that one.',
   ].join(' '),
   schema: {
     weight: z.number().positive().describe('The body weight, in `unit`.'),
     unit: z.enum(['kg', 'lb']).optional().describe('The unit the user gave it in; defaults to the profile\'s. Converted when it differs.'),
     date: isoDate().optional().describe('YYYY-MM-DD, up to today; defaults to today.'),
-    replace: z.boolean().optional().describe('Replace the weigh-in an earlier day already has.'),
+    time: hhmm().optional().describe('Local time of day, HH:MM. Defaults to now for today, and for an earlier day to the time of its first weigh-in, or 08:00.'),
   },
   handler: async (params, { env = process.env, fetchImpl } = {}) => {
     const now = Date.now()
@@ -39,30 +45,48 @@ export const addBodyweight = {
       if (!(n > 0)) return refuse('the weight has to be more than 0')
       const heavy = tooHeavy(n, S)
       if (heavy) return refuse(heavy)
-      S.bodyweight = Array.isArray(S.bodyweight) ? S.bodyweight : []
-      const had = S.bodyweight.find(b => b?.d === date)
-      if (had && date !== today && !params.replace) {
-        return refuse(`${date} already has a weigh-in (${had.w} ${unitOf(S)}): ask the user, and call again with replace: true to correct it`)
+      const at = params.time || defaultTimeFor(S, date, today, now)
+      if (date === today && at > timeOf(now)) return refuse(`${at} today is still to come`)
+      const before = readingsOf((S.bodyweight || []).find(b => b?.d === date)).length
+      if (!addWeighIn(S, { d: date, at, w: n, t: now })) return refuse('that is no weight')
+      const day = S.bodyweight.find(b => b?.d === date)
+      const corrected = readingsOf(day).length === before && before > 0
+      return {
+        result: { logged: true, date, time: at, weight: n, unit: unitOf(S), ...(corrected ? { corrected: true } : {}), day_weight: day.w, readings: readingList(S, day) },
+        trail: `weigh-in ${date} ${at}`,
       }
-      if (had) { had.w = n; had.t = now; delete had.src } else S.bodyweight.push({ d: date, w: n, t: now })
-      S.bodyweight.sort((a, b) => (a.d < b.d ? -1 : 1))
-      return { result: { logged: true, date, weight: n, unit: unitOf(S), ...(had ? { replaced: true } : {}) }, trail: `weigh-in ${date}` }
     })
   },
 }
 
 export const deleteBodyweight = {
   name: 'delete_bodyweight',
-  description: 'Delete the weigh-in of one day, on every device. Confirm the day and the weight with the user first (get_bodyweight lists them).',
+  description: 'Delete a weigh-in, on every device. On a day with several, say which by its time; all: true deletes the whole day. Confirm the day, time and weight with the user first (get_bodyweight lists them).',
   schema: {
     date: isoDate().describe('The day of the weigh-in, YYYY-MM-DD.'),
+    time: hhmm().optional().describe('The time of the weigh-in, HH:MM, as get_bodyweight lists it. Needed when the day has more than one.'),
+    all: z.boolean().optional().describe('Delete every weigh-in of the day.'),
   },
   handler: async (params, { env = process.env, fetchImpl } = {}) => {
-    return changeProfile({ tool: 'delete_bodyweight', env, fetchImpl }, S => {
-      const had = (S.bodyweight || []).find(b => b?.d === params.date)
-      if (!had) throw fail('ENOENT', `no weigh-in on ${params.date}`)
-      S.bodyweight = S.bodyweight.filter(b => b?.d !== params.date)
-      return { result: { deleted: true, date: params.date, weight: had.w, unit: unitOf(S) }, trail: `deleted weigh-in ${params.date}` }
+    const now = Date.now()
+    return changeProfile({ tool: 'delete_bodyweight', env, fetchImpl, now }, S => {
+      const day = (S.bodyweight || []).find(b => b?.d === params.date)
+      if (!day) throw fail('ENOENT', `no weigh-in on ${params.date}`)
+      const rs = readingsOf(day)
+      const unsure = problem => ({ save: false, result: { deleted: false, problem, readings: readingList(S, day), next: 'Nothing was deleted.' } })
+      if (params.all) {
+        S.bodyweight = S.bodyweight.filter(b => b?.d !== params.date)
+        return { result: { deleted: true, date: params.date, readings: rs.length, weight: day.w, unit: unitOf(S) }, trail: `deleted weigh-ins ${params.date}` }
+      }
+      const pick = params.time ? rs.filter(r => r.at === params.time) : rs
+      if (!pick.length) return unsure(`no weigh-in at ${params.time} on ${params.date}`)
+      if (pick.length > 1) return unsure(params.time ? `more than one weigh-in at ${params.time}; pass all: true to delete the day` : `${params.date} has ${rs.length} weigh-ins: say which by its time, or all: true`)
+      removeWeighIn(S, params.date, pick[0].id, now)
+      const left = S.bodyweight.find(b => b?.d === params.date)
+      return {
+        result: { deleted: true, date: params.date, time: pick[0].at || null, weight: pick[0].w, unit: unitOf(S), ...(left ? { day_weight: left.w, readings_left: readingList(S, left) } : {}) },
+        trail: `deleted weigh-in ${params.date} ${pick[0].at || ''}`.trim(),
+      }
     })
   },
 }

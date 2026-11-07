@@ -77,8 +77,8 @@ The read-only tools, and the ones that write:
 | `preview_session` | What will the app actually put on screen when I start this routine — after the progression policy and my history have overridden the plan? |
 | `get_week_plan` | What's planned when: the next seven days with their routines and how each was decided (coach week, a pinned session, an override, the weekday plan), the current coach week when one is running, and the weekday table. |
 | `list_workouts` | Recent sessions — newest first, with dates, sets done/planned, volume, duration, PRs. |
-| `get_workout` | Full set-by-set breakdown of one session, by `workout_id` or by date. On a day with two sessions the date alone returns both ids to pick from rather than guessing at one. |
-| `get_bodyweight` | Weigh-ins with the latest weight, the goal line, and deltas vs goal. |
+| `get_workout` | Full set-by-set breakdown of one session, by `workout_id` or by date. On a day with two sessions the date alone returns both ids to pick from rather than guessing at one. `form_videos` says how many sets were filmed; the videos themselves never leave the app. A set with a note of its own (set menu → Note) carries it as `sets[].note`. |
+| `get_bodyweight` | Weigh-ins, one value per day (the profile's "Daily weigh-in value": morning, average or last), each day's readings with their times, the latest weight, the goal line, and deltas vs goal. |
 | `estimate_1rm` | All-time best 1RM for an exercise + the trend, or a PR table across all exercises. |
 | `muscle_balance` | Which muscles I've trained this week/month/all-time, ranked + which I've neglected. |
 | `exercise_history` | One exercise's past, as its history sheet shows it: the best ever, each session's sets with its best, estimated 1RM and volume, the PRs and the trend. |
@@ -86,6 +86,7 @@ The read-only tools, and the ones that write:
 | `recovery` | Which muscles are ready, recovering or fatigued now, the hours until each is ready, and how much strength each has kept. |
 | `strength_balance` | Structural Balance: each lift as a percentage of its anchor lift against the template's target, and whether it is balanced, weak or strong. |
 | `plate_math` | Which plates to load for a weight, from your own bar and plates, and what is missing when they cannot make it exactly. |
+| `get_programme` | My programmes (routines as a block of weeks with %1RM / RPE targets), and which week of the running one I'm in. |
 | `log_workout` | *Writes.* "I did dumbbell curls, 12 kg, 12/12/10" → a logged session in your history, on every device. Needs pairing: [Logging workouts](#logging-workouts). |
 | `update_workout` | *Writes.* "Set 2 of Monday's curls was 14 kg, not 12" → that set corrected, as an edit in History makes it (volume, PR badges and the next weight worked out again). Sets, reps, seconds, warm-up/failure marks, removed sets, the session note. |
 | `swap_exercise` | *Writes.* "That was the dumbbell press, not the barbell one" → the entry becomes the right exercise with its sets kept; badges and next weights follow for both. |
@@ -93,7 +94,7 @@ The read-only tools, and the ones that write:
 | `move_workout` | *Writes.* A logged workout's date, start time or duration; it keeps its length when moved, and badges follow the new order. |
 | `exclude_from_progression` | *Writes.* Keeps a logged session (or one exercise in it) out of progression, or counts it again: the injury day, the deload. |
 | `delete_workout` | *Writes.* Removes a session from history on every device, as History's Delete does. |
-| `add_bodyweight` / `delete_bodyweight` | *Writes.* A weigh-in for today or an earlier day (one per day, as the weigh-in sheet keeps them), or one taken out. |
+| `add_bodyweight` / `delete_bodyweight` | *Writes.* A weigh-in at a day and time (several a day, as the weigh-in sheet keeps them; the same time again corrects it), or one taken out. |
 | `set_goal_weight` / `set_weekly_rate_goal` | *Writes.* The target weight on the charts, and the weekly-trend range ("lose 0.5 to 1 % a week"). |
 | `assign_weekday` | *Writes.* Which routines a weekday holds every week: one, several trained together, or rest. |
 | `override_day` | *Writes.* One date changed from the weekly plan: another routine, rest, or back to the plan. |
@@ -103,13 +104,13 @@ The read-only tools, and the ones that write:
 | `delete_routine` | *Writes.* A routine deleted, and taken off the weekdays and rescheduled dates that name it. Logged workouts stay. |
 | `duplicate_routine` | *Writes.* A copy of a routine, right after it. |
 | `restore_routine` | *Writes.* Undoes the last change these tools made to a routine (an edit or a delete) since the server started. |
-| `set_progression` | *Writes.* How weights and reps move: a routine's rule, or one exercise's own rule, weight step and deload factor, in one routine or all of them. |
+| `set_progression` | *Writes.* How weights and reps move: the profile's default rule, a routine's rule, or one exercise's own rule, weight step and deload factor, in one routine or all of them. |
 | `set_rotation` | *Writes.* Train in a loop of routines instead of on weekdays (rest days and repeats allowed), start it over, or go back to the weekday plan. |
 | `plan_week` | *Writes.* A coaching week as a queue: sessions in order, done on whatever days you train; `[]` clears it. |
 | `list_equipment_profiles` | Which equipment profiles I have ("Home", "Gym"), what each holds, and which is in use. |
 | `save_equipment_profile` | *Writes.* A new equipment profile, or one changed: its name and what that place has. |
 | `delete_equipment_profile` | *Writes.* An equipment profile deleted. |
-| `set_active_equipment` | *Writes.* "Only dumbbells at home today": the profile in use, so the app shows only what it has; or the filter off. |
+| `set_active_equipment` | *Writes.* "Only dumbbells at home today": the profile in use, so the app shows only what it has and loads that gym's own plates, dumbbells and bars; or the filter off. |
 | `search_exercises` | Find an exercise and its id in the library and my own, typos and abbreviations included, favourites first. |
 | `similar_exercises` | What else trains the same muscle when the machine is taken, optionally only what my equipment allows. |
 | `create_custom_exercise` | *Writes.* An exercise of my own: name, body part, equipment, muscles, description, other names. |
@@ -138,6 +139,8 @@ When a client connects, the server also sends a short map of openGym (`src/instr
 MCP `instructions` field): how routines, the week plan, workouts, units and exercise ids fit
 together, and to dry-run a write before saving it. Clients put it in the model's context next to
 the tool list.
+An exercise merged into another in the app (an exercise's details → Merge into…) reads as the one
+it went into everywhere, also in a workout another device logged against it before it synced.
 
 Each tool returns JSON the LLM can format as it likes; structured fields (sets, dates, levels)
 are pre-formatted into human-readable labels in `src/labels.js` so the LLM doesn't need to
