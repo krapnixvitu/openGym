@@ -94,7 +94,6 @@ The read-only tools, and the ones that write:
 | `move_workout` | *Writes.* A logged workout's date, start time or duration; it keeps its length when moved, and badges follow the new order. |
 | `exclude_from_progression` | *Writes.* Keeps a logged session (or one exercise in it) out of progression, or counts it again: the injury day, the deload. |
 | `delete_workout` | *Writes.* Removes a session from history on every device, as History's Delete does. |
-| `add_bodyweight` / `delete_bodyweight` | *Writes.* A weigh-in for today or an earlier day (one per day, as the weigh-in sheet keeps them), or one taken out. |
 | `add_bodyweight` / `delete_bodyweight` | *Writes.* A weigh-in at a day and time (several a day, as the weigh-in sheet keeps them; the same time again corrects it), or one taken out. |
 | `set_goal_weight` / `set_weekly_rate_goal` | *Writes.* The target weight on the charts, and the weekly-trend range ("lose 0.5 to 1 % a week"). |
 | `assign_weekday` | *Writes.* Which routines a weekday holds every week: one, several trained together, or rest. |
@@ -105,13 +104,13 @@ The read-only tools, and the ones that write:
 | `delete_routine` | *Writes.* A routine deleted, and taken off the weekdays and rescheduled dates that name it. Logged workouts stay. |
 | `duplicate_routine` | *Writes.* A copy of a routine, right after it. |
 | `restore_routine` | *Writes.* Undoes the last change these tools made to a routine (an edit or a delete) since the server started. |
-| `set_progression` | *Writes.* How weights and reps move: a routine's rule, or one exercise's own rule, weight step and deload factor, in one routine or all of them. |
+| `set_progression` | *Writes.* How weights and reps move: the profile's default rule, a routine's rule, or one exercise's own rule, weight step and deload factor, in one routine or all of them. |
 | `set_rotation` | *Writes.* Train in a loop of routines instead of on weekdays (rest days and repeats allowed), start it over, or go back to the weekday plan. |
 | `plan_week` | *Writes.* A coaching week as a queue: sessions in order, done on whatever days you train; `[]` clears it. |
 | `list_equipment_profiles` | Which equipment profiles I have ("Home", "Gym"), what each holds, and which is in use. |
 | `save_equipment_profile` | *Writes.* A new equipment profile, or one changed: its name and what that place has. |
 | `delete_equipment_profile` | *Writes.* An equipment profile deleted. |
-| `set_active_equipment` | *Writes.* "Only dumbbells at home today": the profile in use, so the app shows only what it has; or the filter off. |
+| `set_active_equipment` | *Writes.* "Only dumbbells at home today": the profile in use, so the app shows only what it has and loads that gym's own plates, dumbbells and bars; or the filter off. |
 | `search_exercises` | Find an exercise and its id in the library and my own, typos and abbreviations included, favourites first. |
 | `similar_exercises` | What else trains the same muscle when the machine is taken, optionally only what my equipment allows. |
 | `create_custom_exercise` | *Writes.* An exercise of my own: name, body part, equipment, muscles, description, other names. |
@@ -127,8 +126,6 @@ The read-only tools, and the ones that write:
 | `add_measurement_field` | *Writes.* A measurement of my own to track, in cm, in, %, kg, lb or no unit. |
 | `get_settings` | My training settings (rest timer, effort scale, week start, how sessions are planned and laid out) and what each means. |
 | `update_settings` | *Writes.* Those settings changed. Not the unit (switching converts every weight), reminders or sign-in: those stay in the app. |
-| `set_active_equipment` | *Writes.* "Only dumbbells at home today": the profile in use, so the app shows only what it has and loads that gym's own plates, dumbbells and bars; or the filter off. |
-| `set_progression` | *Writes.* How weights and reps move: the profile's default rule, a routine's rule, or one exercise's own rule, weight step and deload factor, in one routine or all of them. |
 
 `get_routine` and `preview_session` answer two different questions, and confusing them is the
 easiest way for a coach to give wrong advice. `get_routine` reports what the routine *stores*.
