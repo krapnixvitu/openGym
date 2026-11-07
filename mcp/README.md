@@ -95,6 +95,7 @@ The read-only tools, and the ones that write:
 | `exclude_from_progression` | *Writes.* Keeps a logged session (or one exercise in it) out of progression, or counts it again: the injury day, the deload. |
 | `delete_workout` | *Writes.* Removes a session from history on every device, as History's Delete does. |
 | `add_bodyweight` / `delete_bodyweight` | *Writes.* A weigh-in for today or an earlier day (one per day, as the weigh-in sheet keeps them), or one taken out. |
+| `add_bodyweight` / `delete_bodyweight` | *Writes.* A weigh-in at a day and time (several a day, as the weigh-in sheet keeps them; the same time again corrects it), or one taken out. |
 | `set_goal_weight` / `set_weekly_rate_goal` | *Writes.* The target weight on the charts, and the weekly-trend range ("lose 0.5 to 1 % a week"). |
 | `assign_weekday` | *Writes.* Which routines a weekday holds every week: one, several trained together, or rest. |
 | `override_day` | *Writes.* One date changed from the weekly plan: another routine, rest, or back to the plan. |
