@@ -128,6 +128,7 @@ The read-only tools, and the ones that write:
 | `get_settings` | My training settings (rest timer, effort scale, week start, how sessions are planned and laid out) and what each means. |
 | `update_settings` | *Writes.* Those settings changed. Not the unit (switching converts every weight), reminders or sign-in: those stay in the app. |
 | `set_active_equipment` | *Writes.* "Only dumbbells at home today": the profile in use, so the app shows only what it has and loads that gym's own plates, dumbbells and bars; or the filter off. |
+| `set_progression` | *Writes.* How weights and reps move: the profile's default rule, a routine's rule, or one exercise's own rule, weight step and deload factor, in one routine or all of them. |
 
 `get_routine` and `preview_session` answer two different questions, and confusing them is the
 easiest way for a coach to give wrong advice. `get_routine` reports what the routine *stores*.
