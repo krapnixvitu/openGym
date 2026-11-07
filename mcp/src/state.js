@@ -9,6 +9,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { apiConfig, apiFetch } from './api-client.js'
+import { applyExerciseMerges } from '../../frontend/src/lib/exercise-merge.js'
 
 const DATA_DIR = process.env.OPENGYM_DATA || path.join(process.cwd(), 'data')
 // Whether a data directory was asked for, as opposed to the ./data guess.
@@ -106,7 +107,7 @@ export function init() {
   const file = stateFile(_uid)
   if (fs.existsSync(file)) {
     _state = readJsonOrNull(file)
-    if (_state) _state = Object.assign({}, defaultsShape(), _state)
+    if (_state) _state = shaped(_state)
     try { _loadedMtime = fs.statSync(file).mtimeMs } catch {}
   }
   if (_watcher) _watcher.close()
@@ -151,7 +152,7 @@ export function getState() {
     if (fresh) {
       // Same shape the frontend builds on pullState — defaults merged with stored state so any
       // field the app added since the snapshot was last saved shows up undefined-safe.
-      _state = Object.assign({}, defaultsShape(), fresh)
+      _state = shaped(fresh)
       _loadedMtime = mtime
     } else {
       // No state file at all (never signed in on a device), or it went between stat and read.
@@ -231,8 +232,8 @@ export async function refresh({ env = process.env, fetchImpl } = {}) {
   }
   const got = await apiFetch(cfg, '/api/data', opts)
   const doc = got.body?.state
-  // The same defaults the file read merges in; null is a profile that never synced from a device.
-  _state = doc && typeof doc === 'object' && !Array.isArray(doc) ? Object.assign({}, defaultsShape(), doc) : null
+  // Shaped as the file read shapes it; null is a profile that never synced from a device.
+  _state = doc && typeof doc === 'object' && !Array.isArray(doc) ? shaped(doc) : null
   _apiRev = { rev: got.body?.rev ?? 0, wid: typeof doc?._wid === 'string' ? doc._wid : null }
 }
 
@@ -244,6 +245,15 @@ export function _seedStateForTests(state) {
   _loadedMtime = Number.MAX_SAFE_INTEGER   // never re-read from disk in a test
   _seeded = true
   if (_watcher) { _watcher.close(); _watcher = null }
+}
+
+// A stored profile as the tools read it: the app's defaults under it, and an exercise merged into
+// another in the app (#656, lib/exercise-merge.js) read as the one it went into wherever a copy
+// still names it, the way the app's own copies are brought in line when they meet.
+function shaped(stored) {
+  const st = Object.assign({}, defaultsShape(), stored)
+  try { applyExerciseMerges(st) } catch { /* the copy as stored, then */ }
+  return st
 }
 
 function defaultsShape() {

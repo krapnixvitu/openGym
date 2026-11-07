@@ -77,8 +77,8 @@ The read-only tools, and the ones that write:
 | `preview_session` | What will the app actually put on screen when I start this routine — after the progression policy and my history have overridden the plan? |
 | `get_week_plan` | What's planned when: the next seven days with their routines and how each was decided (coach week, a pinned session, an override, the weekday plan), the current coach week when one is running, and the weekday table. |
 | `list_workouts` | Recent sessions — newest first, with dates, sets done/planned, volume, duration, PRs. |
-| `get_workout` | Full set-by-set breakdown of one session, by `workout_id` or by date. On a day with two sessions the date alone returns both ids to pick from rather than guessing at one. |
-| `get_bodyweight` | Weigh-ins with the latest weight, the goal line, and deltas vs goal. |
+| `get_workout` | Full set-by-set breakdown of one session, by `workout_id` or by date. On a day with two sessions the date alone returns both ids to pick from rather than guessing at one. `form_videos` says how many sets were filmed; the videos themselves never leave the app. A set with a note of its own (set menu → Note) carries it as `sets[].note`. |
+| `get_bodyweight` | Weigh-ins, one value per day (the profile's "Daily weigh-in value": morning, average or last), each day's readings with their times, the latest weight, the goal line, and deltas vs goal. |
 | `estimate_1rm` | All-time best 1RM for an exercise + the trend, or a PR table across all exercises. |
 | `muscle_balance` | Which muscles I've trained this week/month/all-time, ranked + which I've neglected. |
 | `exercise_history` | One exercise's past, as its history sheet shows it: the best ever, each session's sets with its best, estimated 1RM and volume, the PRs and the trend. |
@@ -86,6 +86,7 @@ The read-only tools, and the ones that write:
 | `recovery` | Which muscles are ready, recovering or fatigued now, the hours until each is ready, and how much strength each has kept. |
 | `strength_balance` | Structural Balance: each lift as a percentage of its anchor lift against the template's target, and whether it is balanced, weak or strong. |
 | `plate_math` | Which plates to load for a weight, from your own bar and plates, and what is missing when they cannot make it exactly. |
+| `get_programme` | My programmes (routines as a block of weeks with %1RM / RPE targets), and which week of the running one I'm in. |
 | `log_workout` | *Writes.* "I did dumbbell curls, 12 kg, 12/12/10" → a logged session in your history, on every device. Needs pairing: [Logging workouts](#logging-workouts). |
 | `update_workout` | *Writes.* "Set 2 of Monday's curls was 14 kg, not 12" → that set corrected, as an edit in History makes it (volume, PR badges and the next weight worked out again). Sets, reps, seconds, warm-up/failure marks, removed sets, the session note. |
 | `swap_exercise` | *Writes.* "That was the dumbbell press, not the barbell one" → the entry becomes the right exercise with its sets kept; badges and next weights follow for both. |
@@ -138,6 +139,8 @@ When a client connects, the server also sends a short map of openGym (`src/instr
 MCP `instructions` field): how routines, the week plan, workouts, units and exercise ids fit
 together, and to dry-run a write before saving it. Clients put it in the model's context next to
 the tool list.
+An exercise merged into another in the app (an exercise's details → Merge into…) reads as the one
+it went into everywhere, also in a workout another device logged against it before it synced.
 
 Each tool returns JSON the LLM can format as it likes; structured fields (sets, dates, levels)
 are pre-formatted into human-readable labels in `src/labels.js` so the LLM doesn't need to
